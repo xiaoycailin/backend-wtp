@@ -50,7 +50,9 @@ export default async function userRoutes(fastify: FastInstance) {
             body: createUserLoginSchema,
         },
         handler: async (req, reply) => {
-            const ipaddr = req.ip + ", " + req.ips?.join(",")
+            const ipList = [req.ip, ...(req.ips || [])].filter(Boolean);
+            const ipaddr = ipList.join(",");
+
             const body = req.body as UserFieldPayload;
             if (!body.password && !body.email) {
                 return reply.send({

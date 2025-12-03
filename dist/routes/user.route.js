@@ -44,7 +44,8 @@ async function userRoutes(fastify) {
             body: user_schema_1.createUserLoginSchema,
         },
         handler: async (req, reply) => {
-            const ipaddr = req.ip + ", " + req.ips?.join(",");
+            const ipList = [req.ip, ...(req.ips || [])].filter(Boolean);
+            const ipaddr = ipList.join(",");
             const body = req.body;
             if (!body.password && !body.email) {
                 return reply.send({
