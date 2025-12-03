@@ -13,4 +13,3 @@ npx prisma generate
 
 echo "Restarting service..."
 pm2 restart marketplaceservice || pm2 start node --name "marketplaceservice" -- -r tsconfig-paths/register dist/index.js
-
