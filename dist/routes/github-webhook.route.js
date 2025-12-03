@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.default = githubWebhook;
 const child_process_1 = require("child_process");
-const logger_1 = require("utils/logger"); // sesuaikan loggermu
+const logger_1 = require("../utils/logger"); // sesuaikan loggermu
 // Repository dan branch yang diizinkan
 const ALLOWED_REPO = 'aiden2209-dev/marketplaceservice';
 const ALLOWED_BRANCH = 'refs/heads/main';

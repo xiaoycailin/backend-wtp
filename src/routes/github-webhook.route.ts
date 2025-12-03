@@ -1,7 +1,7 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { exec } from 'child_process';
 import crypto from 'crypto';
-import { logger } from 'utils/logger'; // sesuaikan loggermu
+import { logger } from '../utils/logger'; // sesuaikan loggermu
 
 
 // Repository dan branch yang diizinkan
