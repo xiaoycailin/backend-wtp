@@ -32,7 +32,7 @@ async function githubWebhook(fastify) {
                 else
                     logger_1.logger.info(`Deploy output: ${stdout}`);
             });
-            return reply.send({ status: 'Deploy triggered ✅', message: msg });
+            return reply.send({ status: 'Deploy triggered ✅', time: new Date(), message: msg });
         }
         catch (err) {
             logger_1.logger.error('Webhook processing error:', err);

@@ -35,7 +35,7 @@ export default async function githubWebhook(fastify: FastifyInstance) {
                 else logger.info(`Deploy output: ${stdout}`);
             });
 
-            return reply.send({ status: 'Deploy triggered ✅', message: msg });
+            return reply.send({ status: 'Deploy triggered ✅', time: new Date(), message: msg });
         } catch (err) {
             logger.error('Webhook processing error:', err);
             return reply.status(500).send({ error: 'Internal server error' });
