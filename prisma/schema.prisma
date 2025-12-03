@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  buyer
+  seller
+  admin
+}
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  displayName      String?
+  passwordHash     String?
+  loginProvider    String    @default("email") // email, google
+  role             UserRole? @default(buyer)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  isSellerVerified Boolean   @default(false)
+  emailVerified    Boolean   @default(false)
+}
+
+model LoginSession {
+  id         String    @id @default(uuid())
+  userId     String    @unique
+  jwtToken   String    @db.LongText
+  ip_addr    String?
+  user_agent String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime?
+}
+
+model Products {
+  
+}

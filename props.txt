@@ -1,0 +1,778 @@
+📊 1. Dashboard Admin (Super Administrator)
+
+Admin memiliki akses penuh untuk melihat seluruh alur, statistik global, dan manajemen platform.
+
+1.1. Home Overview (Dashboard Utama)
+
+Menampilkan statistik harian / mingguan / bulanan:
+
+Statistik Utama
+
+Total transaksi hari ini / minggu ini / bulan ini
+
+Total penghasilan platform (fee)
+
+Total penjualan seller (global)
+
+Jumlah user baru
+
+Jumlah seller baru yang daftar
+
+Jumlah dispute (open, resolved)
+
+Produk baru yang publish hari ini
+
+Produk yang di-report
+
+
+Grafik
+
+Grafik penjualan (line chart)
+
+Grafik revenue (escrow → clearing → released)
+
+Grafik jumlah dispute
+
+Grafik kategori game terlaris
+
+
+Notifikasi penting
+
+Seller baru menunggu verifikasi
+
+Dispute yang butuh tindakan segera
+
+Webhook payment failed
+
+Produk yang disuspensi otomatis (gambar/keyword terlarang)
+
+
+
+---
+
+1.2 Manajemen User
+
+List semua user dengan role: buyer / seller / admin
+
+Search & filter
+
+Aksi:
+
+Suspend user
+
+Ban user
+
+Reset verification
+
+Lihat order-history user
+
+Lihat riwayat login (IP tracking)
+
+Lihat audit logs per user
+
+
+
+
+---
+
+1.3 Manajemen Seller
+
+List seller + status verifikasi
+
+Review dokumen & bukti kepemilikan
+
+Approve / Reject aplikasi seller
+
+Statistik tiap seller:
+
+Total penjualan
+
+Jumlah dispute
+
+Reputation score
+
+Produk aktif
+
+Produk yang pernah diturunkan
+
+
+
+
+---
+
+1.4 Manajemen Produk
+
+Semua produk yang dipublish seller
+
+Filter: kategori, harga, status (draft/available/reserved/sold/banned)
+
+Aksi:
+
+Suspend produk
+
+Edit kategori jika salah
+
+Lihat laporan dari user
+
+Cek gambar & deskripsi (moderasi)
+
+
+
+
+---
+
+1.5 Manajemen Transaksi & Escrow
+
+Daftar order lengkap (global)
+
+Data tiap order terlihat:
+
+Buyer
+
+Seller
+
+Produk
+
+Status pembayaran (paid, pending, failed)
+
+Status escrow (held, clearing, released)
+
+Status pengiriman akun (handover)
+
+History perubahan status
+
+
+Admin dapat:
+
+Force refund
+
+Force release escrow
+
+Buka/tutup dispute
+
+Freeze seller
+
+
+
+
+---
+
+1.6 Dispute Center
+
+Daftar dispute yang sedang berlangsung
+
+Detail dispute:
+
+Bukti dari buyer
+
+Bukti dari seller
+
+Timeline chat & aksi
+
+IP logs (deteksi hack-back)
+
+
+Aksi admin:
+
+Keputusan final: refund / release funds
+
+Penalti seller
+
+Catat strike
+
+
+
+
+---
+
+1.7 Financial Dashboard
+
+Total escrow yang sedang ditahan
+
+Total payout ke seller
+
+Total fee platform
+
+Withdraw request seller:
+
+Approve / reject withdraw
+
+Bukti transfer (jika manual)
+
+
+Laporan bulanan otomatis (CSV/Excel)
+
+
+
+---
+
+1.8 Audit Logs (Keamanan)
+
+Perubahan password seller/buyer
+
+Perubahan recovery email akun game
+
+IP login mencurigakan
+
+Akses data sensitif oleh admin
+
+
+
+---
+
+
+---
+
+👨‍💼 2. Dashboard Seller
+
+Seller hanya melihat data yang berkaitan dengan penjualan produk miliknya.
+
+2.1 Home Overview (Dashboard)
+
+Statistik seller:
+
+Statistik Harian/Mingguan/Bulanan
+
+Total produk terjual
+
+Total pendapatan (net)
+
+Saldo tersedia
+
+Saldo dalam proses clearing
+
+Produk yang sedang menunggu pembayaran
+
+Produk direview (jika ada moderasi dari admin)
+
+
+Grafik
+
+Grafik penjualan
+
+Grafik pendapatan bersih
+
+Produk terlaris
+
+
+
+---
+
+2.2 Manajemen Produk
+
+Fitur lengkap:
+
+Tambah produk (title, deskripsi, harga, gambar 1–6, data akun)
+
+Edit produk
+
+Duplicate produk
+
+Hapus atau Unpublish
+
+Lihat status produk:
+
+Draft
+
+Published
+
+Reserved (sedang di-checkout buyer)
+
+Sold
+
+
+Melihat performa tiap produk:
+
+Jumlah klik
+
+Jumlah lihat
+
+Konversi checkout
+
+
+
+
+---
+
+2.3 Order / Penjualan
+
+Menampilkan semua order yang berkaitan dengan seller:
+
+Kolom:
+
+Order ID
+
+Produk
+
+Buyer
+
+Status:
+
+Reserved
+
+Paid
+
+Waiting for seller action
+
+Handover in progress
+
+Completed
+
+Dispute (open)
+
+
+Tanggal pembelian
+
+Jumlah pembayaran
+
+
+Aksi Seller:
+
+Kirim data akun (jika manual handover)
+
+Update status handover
+
+Upload bukti kepemilikan awal
+
+Balas chat buyer di halaman diskusi
+
+Ajukan ke admin jika buyer bermasalah
+
+Melihat dispute progress
+
+
+
+---
+
+2.4 Saldo / Keuangan
+
+Saldo tersedia
+
+Saldo tertahan (escrow)
+
+Riwayat withdraw
+
+Biaya platform (per order)
+
+Withdraw request:
+
+Nominal
+
+Bank / e-wallet
+
+Status withdraw
+
+
+
+
+---
+
+2.5 Message / Diskusi Order
+
+Chat dengan buyer
+
+Upload bukti
+
+Notifikasi saat buyer membuka dispute
+
+Notifikasi jika admin masuk room
+
+
+
+---
+
+2.6 Setting Seller
+
+Ubah profil
+
+Ubah data verifikasi
+
+Rekam data pembayaran withdraw
+
+2FA activation
+
+Riwayat login (untuk keamanan)
+
+
+
+---
+
+
+---
+
+👤 3. Dashboard Buyer (bonus)
+
+Meski tidak ditanyakan, struktur ini biasanya dibutuhkan:
+
+Buyer bisa melihat:
+
+Order history
+
+Status pembelian
+
+Diskusi per order
+
+Download bukti transaksi
+
+Refund status
+
+Produk favorit
+
+
+
+---
+
+🔐 4. Mekanisme Dashboard Agar Aman dan Stabil
+
+Admin
+
+Role super-admin, tidak bisa diubah sembarang user.
+
+Semua aksi kritis (refund, release escrow, ban user) tercatat di audit log.
+
+IP whitelist optional.
+
+
+Seller
+
+Akses hanya ke data miliknya.
+
+Semua credential akun game disembunyikan kecuali oleh buyer setelah pembayaran.
+
+Action handover hanya muncul jika order.status=PAID.
+
+
+Buyer
+
+Tidak bisa melihat credential seller.
+
+Diskusi & bukti terenkripsi.
+
+
+
+---
+
+📦 5. Integrasi Dashboard Dengan Alur Transaksi
+
+Contoh alur dalam dashboard:
+
+1. Buyer checkout → Order: reserved
+
+
+2. Buyer bayar → Admin dashboard menunjukkan “New Paid Order”
+
+
+3. Seller dashboard menunjukkan: “Product X awaiting handover”
+
+
+4. Seller kirim data → Buyer verifikasi → Completed
+
+
+5. Escrow start → clearing → Seller bisa withdraw
+
+
+6. Semua proses tampil di timeline dashboard admin & seller
+
+
+
+
+
+
+📦 1. ENUM / LOOKUP
+
+CREATE TYPE user_role AS ENUM ('buyer', 'seller', 'admin');
+CREATE TYPE verification_status AS ENUM ('pending', 'approved', 'rejected');
+CREATE TYPE product_status AS ENUM ('draft', 'published', 'available', 'reserved', 'sold', 'banned');
+CREATE TYPE order_status AS ENUM ('reserved', 'paid', 'handover', 'completed', 'cancelled', 'dispute', 'refunded');
+CREATE TYPE escrow_status AS ENUM ('held', 'clearing', 'released', 'refunded');
+CREATE TYPE dispute_status AS ENUM ('open', 'resolved', 'rejected');
+CREATE TYPE account_data_type AS ENUM ('DROPPED', 'PENDING_SELLER_SEND', 'AUTO_TRANSFER');
+
+> Jika tidak ingin ENUM, bisa gunakan TEXT.
+
+
+
+
+---
+
+👤 2. USERS (Buyer, Seller, Admin)
+
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT,
+    role user_role NOT NULL DEFAULT 'buyer',
+    google_sub TEXT UNIQUE, -- jika login via Google
+    display_name TEXT,
+    email_verified BOOLEAN DEFAULT FALSE,
+    is_seller_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+
+---
+
+🧾 3. Seller Verification Application
+
+CREATE TABLE seller_verifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    status verification_status DEFAULT 'pending',
+    docs JSONB, -- bukti dokumen seller
+    admin_id UUID REFERENCES users(id),
+    reviewed_at TIMESTAMPTZ
+);
+
+Index penting:
+
+CREATE INDEX idx_seller_verify_user ON seller_verifications(user_id);
+
+
+---
+
+🎮 4. Products
+
+CREATE TABLE products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    seller_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    slug TEXT UNIQUE NOT NULL,
+    description TEXT,
+    category TEXT,
+    price BIGINT NOT NULL,
+    promo_price BIGINT,
+    currency CHAR(3) DEFAULT 'IDR',
+    status product_status DEFAULT 'draft',
+    thumbnail_url TEXT,
+    account_data_type account_data_type,
+    account_data_encrypted BYTEA,  -- terenkripsi
+    condition_notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    stock INT,
+    product_type enum,
+
+);
+
+CREATE INDEX idx_products_seller ON products(seller_id);
+CREATE INDEX idx_products_status ON products(status);
+
+
+---
+
+🖼 5. Product Images (max 6)
+
+CREATE TABLE product_images (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    position SMALLINT, -- 1 sampai 6
+    created_at TIMESTAMPTZ DEFAULT now(),
+    image_type ENUM ('thumbnail', 'slide_banner'), 
+);
+
+Constraint batas 6 image:
+
+ALTER TABLE product_images
+    ADD CONSTRAINT product_images_max6
+    CHECK (position >= 1 AND position <= 6);
+
+
+---
+
+🛒 6. Orders (Anti Double Purchase)
+
+CREATE TABLE orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_number TEXT UNIQUE NOT NULL,
+    product_id UUID REFERENCES products(id),
+    buyer_id UUID REFERENCES users(id),
+    seller_id UUID REFERENCES users(id),
+    price BIGINT NOT NULL,
+    currency CHAR(3) NOT NULL,
+    status order_status DEFAULT 'reserved',
+    reservation_expires_at TIMESTAMPTZ,
+    payment_reference TEXT, -- dari payment gateway
+    escrow_amount BIGINT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+🔒 Anti Double Purchase — Partial Unique Index
+
+Hanya satu aktif order per produk (reserved, paid, handover):
+
+CREATE UNIQUE INDEX unique_active_product_order ON orders(product_id)
+WHERE status IN ('reserved', 'paid', 'handover');
+
+Inilah yang benar-benar mencegah dua pembeli beli produk yang sama.
+
+Index tambahan:
+
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_buyer ON orders(buyer_id);
+
+
+---
+
+💰 7. Escrow (Dana Ditahan)
+
+CREATE TABLE escrows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+    amount BIGINT NOT NULL,
+    status escrow_status DEFAULT 'held',
+    hold_until TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+
+---
+
+🧾 8. Withdraw Requests (Seller payout)
+
+CREATE TABLE withdrawals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    seller_id UUID REFERENCES users(id),
+    amount BIGINT NOT NULL,
+    status TEXT DEFAULT 'pending', -- pending|approved|rejected|paid
+    target_bank JSONB,              -- rekening/e-wallet seller
+    admin_id UUID REFERENCES users(id),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+
+---
+
+💬 9. Order Discussion / Chat
+
+CREATE TABLE order_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+    sender_id UUID REFERENCES users(id),
+    message TEXT,
+    attachment_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_order_messages_order ON order_messages(order_id);
+
+
+---
+
+⚠️ 10. Dispute System
+
+CREATE TABLE disputes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_id UUID UNIQUE REFERENCES orders(id),
+    raised_by UUID REFERENCES users(id),
+    reason TEXT,
+    status dispute_status DEFAULT 'open',
+    resolution TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+
+---
+
+🔐 11. Audit Logs (Anti Hack-back & Admin Monitoring)
+
+CREATE TABLE audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    actor_id UUID REFERENCES users(id),
+    action TEXT NOT NULL,
+    target_type TEXT,
+    target_id UUID,
+    payload JSONB,
+    ip_address inet,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+
+---
+
+🖥 12. User Session Logs (Untuk deteksi seller hack-back)
+
+CREATE TABLE user_sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id),
+    ip inet,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    last_seen_at TIMESTAMPTZ
+);
+
+
+---
+
+📂 13. Reports (Laporan pengguna ke admin)
+
+CREATE TABLE product_reports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reporter_id UUID REFERENCES users(id),
+    product_id UUID REFERENCES products(id),
+    reason TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+
+---
+
+📊 14. Analytics Events (Optional, untuk dashboard statistik)
+
+CREATE TABLE analytics_events (
+    id BIGSERIAL PRIMARY KEY,
+    event_type TEXT,           -- product_view / checkout / purchase
+    user_id UUID,
+    product_id UUID,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_analytics_events_product ON analytics_events(product_id);
+
+
+---
+
+🚀 Ringkasan Arsitektur DB
+
+1. users → semua user platform
+
+
+2. seller_verifications → verifikasi seller
+
+
+3. products → item jual
+
+
+4. product_images → max 6 gambar
+
+
+5. orders → transaksi + anti double purchase
+
+
+6. escrows → dana yang ditahan
+
+
+7. order_messages → diskusi
+
+
+8. disputes → sengketa
+
+
+9. withdrawals → pencairan seller
+
+
+10. audit_logs → keamanan & hack-back
+
+
+11. user_sessions → deteksi login mencurigakan
+
+
+12. product_reports → report user
+
+
+13. analytics_events → statistik dashboard
