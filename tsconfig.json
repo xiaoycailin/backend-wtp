@@ -1,25 +1,26 @@
 {
-    "compilerOptions": {
-        "baseUrl": ".",
-        "paths": {
-            "*": [
-                "types/*"
-            ],
-            "src/*": [
-                "./src/*"
-            ]
-        },
-        "module": "commonjs",
-        "moduleResolution": "node",
-        "target": "ES2020",
-        "esModuleInterop": true,
-        "strict": true,
-        "types": [
-            "node"
-        ]
+  "compilerOptions": {
+    "baseUrl": "./",
+    "paths": {
+      "plugins/*": ["src/plugins/*"],
+      "services/*": ["src/services/*"],
+      "models/*": ["src/models/*"],
+      "utils/*": ["src/utils/*"],
+      "schemas/*": ["src/schemas/*"]
+      // Tambahkan alias lain jika ada
     },
-    "include": [
-        "src",
-        "types"
-    ]
+
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2020",
+    "esModuleInterop": true,
+    "strict": true,
+    "types": ["node"],
+    
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": [
+    "src"
+, "types"  ]
 }

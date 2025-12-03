@@ -1,8 +1,8 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { DefaultArgs } from "@prisma/client/runtime/library";
 import { FastifyReply, FastifyRequest } from "fastify";
-import { logger } from "src/utils/logger";
-import { verifyToken } from "src/utils/token";
+import { logger } from "../utils/logger";
+import { verifyToken } from "../utils/token";
 import { prisma } from "./prisma";
 
 export const authMidleware = async (req: FastifyRequest, reply: FastifyReply) => {
