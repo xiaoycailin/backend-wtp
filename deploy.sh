@@ -5,6 +5,9 @@ git pull
 echo "Installing dependencies..."
 npm install --omit=dev
 
+echo "Generating data types from prisma..."
+npx prisma generate
+
 # echo "Building project..."
 # npm run build
 
