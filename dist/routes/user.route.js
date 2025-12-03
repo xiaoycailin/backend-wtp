@@ -44,6 +44,7 @@ async function userRoutes(fastify) {
             body: user_schema_1.createUserLoginSchema,
         },
         handler: async (req, reply) => {
+            const ipaddr = req.ip + ", " + req.ips?.join(",");
             const body = req.body;
             if (!body.password && !body.email) {
                 return reply.send({
@@ -75,7 +76,7 @@ async function userRoutes(fastify) {
                                     where: { id: fLoginSession.id, userId: userByEmail.id },
                                     data: {
                                         user_agent: req.headers['user-agent'],
-                                        ip_addr: req.ips?.join(","),
+                                        ip_addr: ipaddr,
                                         jwtToken: userToken,
                                         lastSeenAt: new Date()
                                     }
@@ -88,7 +89,7 @@ async function userRoutes(fastify) {
                                         data: {
                                             userId: userByEmail.id,
                                             user_agent: req.headers['user-agent'],
-                                            ip_addr: req.ips?.join(","),
+                                            ip_addr: ipaddr,
                                             jwtToken: userToken,
                                             lastSeenAt: new Date()
                                         }

@@ -7,7 +7,7 @@ import { createToken } from '../utils/token';
 import { PrismaClient } from '@prisma/client';
 
 type FastInstance = FastifyInstance & {
-  prisma: PrismaClient
+    prisma: PrismaClient
 };
 
 export default async function userRoutes(fastify: FastInstance) {
@@ -50,6 +50,7 @@ export default async function userRoutes(fastify: FastInstance) {
             body: createUserLoginSchema,
         },
         handler: async (req, reply) => {
+            const ipaddr = req.ip + ", " + req.ips?.join(",")
             const body = req.body as UserFieldPayload;
             if (!body.password && !body.email) {
                 return reply.send({
@@ -85,7 +86,7 @@ export default async function userRoutes(fastify: FastInstance) {
                                     where: { id: fLoginSession.id, userId: userByEmail.id },
                                     data: {
                                         user_agent: req.headers['user-agent'],
-                                        ip_addr: req.ips?.join(","),
+                                        ip_addr: ipaddr,
                                         jwtToken: userToken,
                                         lastSeenAt: new Date()
                                     }
@@ -97,7 +98,7 @@ export default async function userRoutes(fastify: FastInstance) {
                                         data: {
                                             userId: userByEmail.id,
                                             user_agent: req.headers['user-agent'],
-                                            ip_addr: req.ips?.join(","),
+                                            ip_addr: ipaddr,
                                             jwtToken: userToken,
                                             lastSeenAt: new Date()
                                         }
