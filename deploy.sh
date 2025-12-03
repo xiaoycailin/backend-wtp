@@ -12,4 +12,4 @@ npx prisma generate
 # npm run build
 
 echo "Restarting service..."
-pm2 restart marketplaceservice || pm2 start dist/server.js --name marketplaceservice
+pm2 restart marketplaceservice || pm2 start npm --name "marketplaceservice" -- start
