@@ -35,7 +35,3 @@ model LoginSession {
   createdAt  DateTime  @default(now())
   lastSeenAt DateTime?
 }
-
-model Products {
-  
-}
