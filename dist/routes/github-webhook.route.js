@@ -8,6 +8,6 @@ async function githubWebhook(fastify) {
             if (err)
                 console.error(`Deploy error: ${stderr}`);
         });
-        return reply.send({ status: "Deploy triggered" });
+        return reply.send({ status: "Deploy triggered hahahaha" });
     });
 }
