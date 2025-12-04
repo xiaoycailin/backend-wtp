@@ -13,17 +13,23 @@ enum UserRole {
   admin
 }
 
+enum Currency {
+  IDR
+}
+
 model User {
-  id               String    @id @default(uuid())
-  email            String    @unique
+  id               String     @id @default(uuid())
+  email            String     @unique
   displayName      String?
   passwordHash     String?
-  loginProvider    String    @default("email") // email, google
-  role             UserRole? @default(buyer)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  isSellerVerified Boolean   @default(false)
-  emailVerified    Boolean   @default(false)
+  loginProvider    String     @default("email") // email, google
+  role             UserRole?  @default(buyer)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  isSellerVerified Boolean    @default(false)
+  emailVerified    Boolean    @default(false)
+  currency         Currency   @default(IDR)
+  products         Products[]
 }
 
 model LoginSession {
@@ -34,4 +40,72 @@ model LoginSession {
   user_agent String?
   createdAt  DateTime  @default(now())
   lastSeenAt DateTime?
+}
+
+enum ProductPublishStatus {
+  DRAFT
+  PUBLUSHED
+  AVAILABLE
+  RESERVED
+  SOLD
+  BANNED
+}
+
+model Category {
+  id            String        @id @default(uuid())
+  title         String        @unique
+  slug          String        @db.LongText
+  subCategories SubCategory[]
+  products      Products[]    @relation("CategoryProducts")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([title], name: "idx_category_name")
+}
+
+model SubCategory {
+  id    String @id @default(uuid())
+  title String
+  slug  String @unique
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  products Products[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([categoryId], name: "idx_subcategory_categoryid")
+  @@index([title], name: "idx_subcategory_name")
+}
+
+model Products {
+  id           String  @id @default(uuid())
+  sellerUserId String
+  sellerUser   User    @relation(fields: [sellerUserId], references: [id])
+  title        String
+  slug         String  @unique
+  description  String? @db.LongText
+
+  categoryId String?
+  category   Category? @relation("CategoryProducts", fields: [categoryId], references: [id])
+
+  subCategoryId String
+  subCategory   SubCategory @relation(fields: [subCategoryId], references: [id])
+
+  price          BigInt               @default(0)
+  currency       Currency             @default(IDR)
+  status         ProductPublishStatus @default(DRAFT)
+  stock          Int                  @default(1)
+  thumbnails     String? // kemungkinan imageid
+  conditionNotes String               @db.LongText
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @default(now())
+
+  @@index([sellerUserId], name: "idx_products_seller")
+  @@index([status], name: "idx_products_status")
+  @@index([categoryId], name: "idx_products_category")
+  @@index([subCategoryId], name: "idx_products_subcategory")
 }

@@ -9,6 +9,8 @@ const user_route_1 = __importDefault(require("./routes/user.route"));
 const github_webhook_route_1 = __importDefault(require("./routes/github-webhook.route"));
 const response_1 = __importDefault(require("./plugins/response"));
 const fastify_raw_body_1 = __importDefault(require("fastify-raw-body"));
+const products_route_1 = __importDefault(require("./routes/products.route"));
+const category_route_1 = __importDefault(require("./routes/category.route"));
 const buildServer = () => {
     const app = (0, fastify_1.default)({ logger: true });
     (0, response_1.default)(app);
@@ -20,6 +22,8 @@ const buildServer = () => {
     });
     app.register(prisma_1.default);
     app.register(user_route_1.default);
+    app.register(category_route_1.default);
+    app.register(products_route_1.default);
     app.register(github_webhook_route_1.default);
     return app;
 };

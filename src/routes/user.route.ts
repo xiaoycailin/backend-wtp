@@ -1,14 +1,9 @@
-import { FastifyInstance } from 'fastify'
+
 import { authMidleware } from '../plugins/authMidleware';
 import { UserFieldPayload, createUserLoginSchema, createUserSchema } from '../schemas/user.schema';
 import { hashPassword, verifyPassword } from '../utils/hash';
-import { logger } from '../utils/logger';
 import { createToken } from '../utils/token';
-import { PrismaClient } from '@prisma/client';
-
-type FastInstance = FastifyInstance & {
-    prisma: PrismaClient
-};
+import { FastInstance } from '../utils/fastify';
 
 export default async function userRoutes(fastify: FastInstance) {
     fastify.get('/users/self', {

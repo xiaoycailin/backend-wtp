@@ -14,7 +14,7 @@ declare module 'fastify' {
             id: string;
             email: string;
             name: string;
-            role: 'USER' | 'ADMIN';
+            role: 'buyer' | 'admin' | 'seller';
             [key: string]: string;
         }
     }
