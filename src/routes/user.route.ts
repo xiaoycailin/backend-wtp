@@ -9,6 +9,83 @@ import { createToken } from "../utils/token";
 import { FastInstance } from "../utils/fastify";
 
 export default async function userRoutes(fastify: FastInstance) {
+  const ensureAdmin = (user: any, reply: any): boolean => {
+    if (!user || user.role !== "admin") {
+      reply.status(403).send({
+        message: "You do not have permission to perform this action.",
+      });
+      return false;
+    }
+    return true;
+  };
+
+  fastify.get("/users", {
+    preHandler: authMiddleware,
+    handler: async (req, reply) => {
+      if (!ensureAdmin(req.user, reply)) return;
+
+      const { q = "", role = "", page = "1", limit = "20" } = (req.query ?? {}) as Record<string, string>;
+      const pageNumber = Math.max(Number(page) || 1, 1);
+      const limitNumber = Math.min(Math.max(Number(limit) || 20, 1), 100);
+      const skip = (pageNumber - 1) * limitNumber;
+      const search = q.trim();
+      const roleFilter = role.trim();
+
+      const where = {
+        AND: [
+          roleFilter ? { role: roleFilter as any } : {},
+          search
+            ? {
+                OR: [
+                  { email: { contains: search } },
+                  { displayName: { contains: search } },
+                  { id: { contains: search } },
+                ],
+              }
+            : {},
+        ],
+      } as any;
+
+      const [items, total] = await Promise.all([
+        fastify.prisma.user.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limitNumber,
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            loginProvider: true,
+            role: true,
+            createdAt: true,
+            updatedAt: true,
+            isSellerVerified: true,
+            emailVerified: true,
+            currency: true,
+            _count: {
+              select: {
+                products: true,
+                transactions: true,
+              },
+            },
+          },
+        }),
+        fastify.prisma.user.count({ where }),
+      ]);
+
+      return reply.send({
+        items,
+        meta: {
+          total,
+          page: pageNumber,
+          limit: limitNumber,
+          totalPages: Math.max(Math.ceil(total / limitNumber), 1),
+        },
+      });
+    },
+  });
+
   fastify.get("/users/self", {
     preHandler: authMiddleware,
     handler: async (req, reply) => {
