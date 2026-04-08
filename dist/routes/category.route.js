@@ -1,13 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.default = default_1;
-const authMidleware_1 = require("../plugins/authMidleware");
+const authMiddleware_1 = require("../plugins/authMiddleware");
 const fastify_1 = require("../utils/fastify");
+const products_route_1 = require("./products.route");
 async function default_1(fastify) {
     const ensureAdmin = (user, reply) => {
         if (!user || user.role !== "admin") {
             reply.status(403).send({
-                message: "You do not have permission to perform this action."
+                message: "You do not have permission to perform this action.",
             });
             return false;
         }
@@ -16,62 +17,84 @@ async function default_1(fastify) {
     const validateName = (name, reply) => {
         if (!name || name.trim().length === 0) {
             reply.status(400).send({
-                message: "Category name cannot be empty."
+                message: "Category name cannot be empty.",
             });
             return false;
         }
         return true;
     };
-    fastify.get('/category', {
-        handler: async (_, reply) => {
+    fastify.get("/category", {
+        handler: async (_req, reply) => {
             const categories = await fastify.prisma.category.findMany({
                 include: {
-                    subCategories: true
-                }
+                    subCategories: true,
+                },
             });
             return reply.send(categories);
-        }
+        },
     });
-    fastify.get('/category/sub', {
-        handler: async (_, reply) => {
+    fastify.get("/category/sub", {
+        handler: async (_req, reply) => {
             const subCategories = await fastify.prisma.subCategory.findMany({
                 include: {
-                    category: true
-                }
+                    category: true,
+                },
             });
             return reply.send(subCategories);
-        }
+        },
     });
-    fastify.get('/category/sub/:dynamic', {
+    fastify.get("/category/sub/:dynamic", {
         handler: async (req, reply) => {
             const { dynamic } = req.params;
+            const { productInclude } = req.query;
             const key = dynamic.trim();
             if (!key) {
                 return reply.status(400).send({
-                    message: "Invalid parameter."
+                    message: "Invalid parameter.",
                 });
             }
             const subCategories = await fastify.prisma.subCategory.findMany({
                 where: {
-                    OR: [
-                        { categoryId: key },
-                        { category: { slug: key } }
-                    ]
+                    OR: [{ categoryId: key }, { slug: key }],
                 },
                 include: {
-                    category: true
-                }
+                    category: true,
+                    products: productInclude === "true"
+                        ? {
+                            where: {
+                                status: {
+                                    in: ["PUBLISHED", "AVAILABLE", "SOLD"],
+                                },
+                            },
+                            include: {
+                                flashSales: {
+                                    select: {
+                                        discount: true,
+                                        id: true,
+                                        stock: true,
+                                        sellCount: true,
+                                        discType: true,
+                                    },
+                                },
+                            },
+                        }
+                        : false,
+                },
             });
             if (subCategories.length === 0) {
                 return reply.status(404).send({
-                    message: "No sub-categories found for the given parameter."
+                    message: "No sub-categories found for the given parameter.",
                 });
             }
-            return reply.send(subCategories);
-        }
+            /**
+             * BUG-FIX: Apply BigInt conversion so `price` / `discount` fields in
+             * included products don't cause JSON serialisation errors.
+             */
+            return reply.send(subCategories.map(products_route_1.convertBigIntAndDate));
+        },
     });
-    fastify.post('/category', {
-        preHandler: authMidleware_1.authMidleware,
+    fastify.post("/category", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
             if (!ensureAdmin(user, reply))
@@ -81,66 +104,75 @@ async function default_1(fastify) {
                 return;
             const slug = (0, fastify_1.slugify)(title);
             const exists = await fastify.prisma.category.count({
-                where: { OR: [{ slug }, { title }] }
+                where: { OR: [{ slug }, { title }] },
             });
             if (exists > 0) {
                 return reply.status(409).send({
-                    message: "Category name already exists. Please choose a different name."
+                    message: "Category name already exists. Please choose a different name.",
                 });
             }
             const newCategory = await fastify.prisma.category.create({
-                data: { title, slug }
+                data: { title, slug },
             });
-            return reply.send({
+            return reply.status(201).send({
                 message: "Category created successfully.",
-                ...newCategory
+                ...newCategory,
             });
-        }
+        },
     });
-    fastify.post('/category/sub/:categoryId', {
-        preHandler: authMidleware_1.authMidleware,
+    // Create sub category
+    fastify.post("/category/sub/:categoryId", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
             if (!ensureAdmin(user, reply))
                 return;
             const { categoryId } = req.params;
-            const { title } = req.body;
+            const { title, thumbnail, description, banners, brand } = req.body;
             if (!validateName(title, reply))
                 return;
             const slug = (0, fastify_1.slugify)(title);
             const category = await fastify.prisma.category.findUnique({
-                where: { id: categoryId }
+                where: { id: categoryId },
             });
             if (!category) {
                 return reply.status(404).send({
-                    message: "Category not found."
+                    message: "Category not found.",
                 });
             }
             const exists = await fastify.prisma.subCategory.count({
                 where: {
                     categoryId,
-                    OR: [{ slug }, { title }]
-                }
+                    OR: [{ slug }, { title }],
+                },
             });
             if (exists > 0) {
                 return reply.status(409).send({
-                    message: "Sub-category name already exists. Please choose a different name."
+                    message: "Sub-category name already exists. Please choose a different name.",
                 });
             }
             const newSubCategory = await fastify.prisma.subCategory.create({
-                data: { title, slug, categoryId }
+                data: {
+                    title,
+                    slug,
+                    categoryId,
+                    brand,
+                    banners,
+                    description,
+                    thumbnail,
+                },
             });
-            return reply.send({
+            return reply.status(201).send({
                 message: "Sub-category created successfully.",
-                ...newSubCategory
+                ...newSubCategory,
             });
-        }
+        },
     });
     // ===========================
     // UPDATE CATEGORY
     // ===========================
-    fastify.put('/category/:categoryId', {
-        preHandler: authMidleware_1.authMidleware,
+    fastify.put("/category/:categoryId", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
             if (!ensureAdmin(user, reply))
@@ -151,7 +183,7 @@ async function default_1(fastify) {
                 return;
             const slug = (0, fastify_1.slugify)(title);
             const exists = await fastify.prisma.category.findUnique({
-                where: { id: categoryId }
+                where: { id: categoryId },
             });
             if (!exists) {
                 return reply.status(404).send({ message: "Category not found." });
@@ -159,132 +191,128 @@ async function default_1(fastify) {
             const conflict = await fastify.prisma.category.count({
                 where: {
                     id: { not: categoryId },
-                    OR: [{ slug }, { title }]
-                }
+                    OR: [{ slug }, { title }],
+                },
             });
             if (conflict > 0) {
                 return reply.status(409).send({
-                    message: "Another category already uses this name."
+                    message: "Another category already uses this name.",
                 });
             }
             const updated = await fastify.prisma.category.update({
                 where: { id: categoryId },
-                data: { title, slug }
+                data: { title, slug },
             });
             return reply.send({
                 message: "Category updated successfully.",
-                ...updated
+                ...updated,
             });
-        }
+        },
     });
     // ===========================
     // DELETE CATEGORY
     // ===========================
-    fastify.delete('/category/:categoryId', {
-        preHandler: authMidleware_1.authMidleware,
+    fastify.delete("/category/:categoryId", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
             if (!ensureAdmin(user, reply))
                 return;
             const { categoryId } = req.params;
             const exists = await fastify.prisma.category.findUnique({
-                where: { id: categoryId }
+                where: { id: categoryId },
             });
             if (!exists) {
                 return reply.status(404).send({ message: "Category not found." });
             }
-            // Optional: Auto-delete subcategories — bisa disesuaikan
             await fastify.prisma.subCategory.deleteMany({
-                where: { categoryId }
+                where: { categoryId },
             });
             const deleted = await fastify.prisma.category.delete({
-                where: { id: categoryId }
+                where: { id: categoryId },
             });
             return reply.send({
                 message: "Category deleted successfully.",
-                data: deleted
+                data: deleted,
             });
-        }
+        },
     });
     // ===========================
     // UPDATE SUBCATEGORY
     // ===========================
-    fastify.put('/category/sub/:subId', {
-        preHandler: authMidleware_1.authMidleware,
+    fastify.put("/category/sub/:subId", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
             if (!ensureAdmin(user, reply))
                 return;
             const { subId } = req.params;
-            const { title, categoryId } = req.body;
+            const { title, categoryId, thumbnail, description, banners, brand } = req.body;
             if (!validateName(title, reply))
                 return;
             const slug = (0, fastify_1.slugify)(title);
-            // Find existing subcategory
             const subCategory = await fastify.prisma.subCategory.findUnique({
-                where: { id: subId }
+                where: { id: subId },
             });
             if (!subCategory) {
                 return reply.status(404).send({
-                    message: "Sub-category not found."
+                    message: "Sub-category not found.",
                 });
             }
-            // Determine new categoryId (fallback to old)
             const newCategoryId = categoryId || subCategory.categoryId;
-            // Check for conflict with same category
             const conflict = await fastify.prisma.subCategory.count({
                 where: {
                     id: { not: subId },
                     categoryId: newCategoryId,
-                    OR: [
-                        { slug },
-                        { title }
-                    ]
-                }
+                    OR: [{ slug }, { title }],
+                },
             });
             if (conflict > 0) {
                 return reply.status(409).send({
-                    message: "A sub-category with the same name already exists in this category."
+                    message: "A sub-category with the same name already exists in this category.",
                 });
             }
-            // Update record
             const updated = await fastify.prisma.subCategory.update({
                 where: { id: subId },
                 data: {
                     title,
                     slug,
-                    categoryId: newCategoryId
-                }
+                    thumbnail,
+                    banners,
+                    description,
+                    brand,
+                    categoryId: newCategoryId,
+                },
             });
             return reply.send({
                 message: "Sub-category updated successfully.",
-                ...updated
+                ...updated,
             });
-        }
+        },
     });
     // ===========================
     // DELETE SUBCATEGORY
     // ===========================
-    fastify.delete('/category/sub/:subId', {
-        preHandler: authMidleware_1.authMidleware,
+    fastify.delete("/category/sub/:subId", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
             if (!ensureAdmin(user, reply))
                 return;
             const { subId } = req.params;
             const exists = await fastify.prisma.subCategory.findUnique({
-                where: { id: subId }
+                where: { id: subId },
             });
             if (!exists) {
                 return reply.status(404).send({ message: "Sub-category not found." });
             }
             const deleted = await fastify.prisma.subCategory.delete({
-                where: { id: subId }
+                where: { id: subId },
             });
             return reply.send({
                 message: "Sub-category deleted successfully.",
-                data: deleted
+                data: deleted,
             });
-        }
+        },
     });
 }

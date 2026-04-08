@@ -7,7 +7,6 @@
       "models/*": ["src/models/*"],
       "utils/*": ["src/utils/*"],
       "schemas/*": ["src/schemas/*"]
-      // Tambahkan alias lain jika ada
     },
 
     "module": "commonjs",
@@ -16,11 +15,10 @@
     "esModuleInterop": true,
     "strict": true,
     "types": ["node"],
-    
+
     "outDir": "dist",
     "rootDir": "src"
   },
-  "include": [
-    "src"
-, "types"  ]
+  "include": ["src", "types"]
 }
+

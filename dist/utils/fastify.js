@@ -4,11 +4,11 @@ exports.slugify = void 0;
 const slugify = (text) => {
     return text
         .toString()
-        .normalize("NFD") // hilangkan aksen/diacritics
+        .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .trim()
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-") // selain huruf/angka = "-"
-        .replace(/^-+|-+$/g, ""); // trim "-"
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 };
 exports.slugify = slugify;

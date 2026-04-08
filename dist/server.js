@@ -5,25 +5,80 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const fastify_1 = __importDefault(require("fastify"));
 const prisma_1 = __importDefault(require("./plugins/prisma"));
-const user_route_1 = __importDefault(require("./routes/user.route"));
-const github_webhook_route_1 = __importDefault(require("./routes/github-webhook.route"));
 const response_1 = __importDefault(require("./plugins/response"));
-const fastify_raw_body_1 = __importDefault(require("fastify-raw-body"));
+const multipart_1 = __importDefault(require("@fastify/multipart"));
+const static_1 = __importDefault(require("@fastify/static"));
+const path_1 = require("path");
+const user_route_1 = __importDefault(require("./routes/user.route"));
 const products_route_1 = __importDefault(require("./routes/products.route"));
 const category_route_1 = __importDefault(require("./routes/category.route"));
-const buildServer = () => {
-    const app = (0, fastify_1.default)({ logger: true });
+const upload_image_route_1 = __importDefault(require("./routes/upload-image.route"));
+const payment_route_1 = __importDefault(require("./routes/payment.route"));
+const callback_route_1 = __importDefault(require("./routes/callback.route"));
+const transaction_route_1 = __importDefault(require("./routes/transaction.route"));
+const game_check_route_1 = __importDefault(require("./routes/game-check.route"));
+const siteconfig_route_1 = __importDefault(require("./routes/siteconfig.route"));
+const github_webhook_route_1 = __importDefault(require("./routes/github-webhook.route"));
+const buildServer = async () => {
+    const app = (0, fastify_1.default)({
+        logger: {
+            transport: {
+                target: "pino-pretty",
+                options: {
+                    colorize: true,
+                },
+            },
+        },
+    });
+    // Response wrapper + error handler
     (0, response_1.default)(app);
-    app.register(fastify_raw_body_1.default, {
-        field: 'rawBody', // nama property di request
-        global: false, // true = semua route, false = register manual
-        runFirst: true,
-        encoding: 'utf8', // atau null untuk Buffer
+    // Plugins
+    await app.register(multipart_1.default, {
+        limits: {
+            fileSize: 5 * 1024 * 1024, // 5 MB
+        },
+    });
+    app.register(static_1.default, {
+        root: (0, path_1.join)(process.cwd(), "static"),
+        prefix: "/static/",
     });
     app.register(prisma_1.default);
+    app.get("/health", async () => {
+        return {
+            ok: true,
+            service: "backend-by-fennai",
+            timestamp: new Date().toISOString(),
+            uptimeSeconds: Math.round(process.uptime()),
+        };
+    });
+    app.get("/health/db", async (_req, reply) => {
+        try {
+            await app.prisma.$queryRaw `SELECT 1`;
+            return {
+                ok: true,
+                database: "reachable",
+                timestamp: new Date().toISOString(),
+            };
+        }
+        catch (error) {
+            app.log.error({ error }, "Database health check failed");
+            return reply.status(500).send({
+                ok: false,
+                database: "unreachable",
+                timestamp: new Date().toISOString(),
+            });
+        }
+    });
+    // Routes
     app.register(user_route_1.default);
     app.register(category_route_1.default);
     app.register(products_route_1.default);
+    app.register(upload_image_route_1.default);
+    app.register(payment_route_1.default);
+    app.register(transaction_route_1.default);
+    app.register(callback_route_1.default);
+    app.register(game_check_route_1.default);
+    app.register(siteconfig_route_1.default);
     app.register(github_webhook_route_1.default);
     return app;
 };

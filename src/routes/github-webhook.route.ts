@@ -1,44 +1,92 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { exec } from 'child_process';
-import crypto from 'crypto';
-import { logger } from '../utils/logger'; // sesuaikan loggermu
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { exec } from "child_process";
+import crypto from "crypto";
+import { logger } from "../utils/logger";
 
+const ALLOWED_REPO = process.env.GITHUB_ALLOWED_REPO || "aiden2209-dev/marketplaceservice";
+const ALLOWED_BRANCH = process.env.GITHUB_ALLOWED_BRANCH || "refs/heads/main";
+const DEPLOY_COMMAND = process.env.GITHUB_DEPLOY_COMMAND;
 
-// Repository dan branch yang diizinkan
-const ALLOWED_REPO = 'aiden2209-dev/marketplaceservice';
-const ALLOWED_BRANCH = 'refs/heads/main';
+function verifyGithubSignature(
+  payload: string,
+  signatureHeader: string,
+  secret: string,
+): boolean {
+  const expected =
+    "sha256=" +
+    crypto.createHmac("sha256", secret).update(payload).digest("hex");
+
+  if (expected.length !== signatureHeader.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(
+    Buffer.from(expected),
+    Buffer.from(signatureHeader),
+  );
+}
 
 export default async function githubWebhook(fastify: FastifyInstance) {
-    fastify.post('/webhook/deploy', async (req: FastifyRequest, reply: FastifyReply) => {
-        try {
-            const signature = req.headers['x-hub-signature-256'] as string | undefined;
-            const event = req.headers['x-github-event'] as string | undefined;
+  fastify.post(
+    "/webhook/deploy",
+    async (req: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const signature = req.headers["x-hub-signature-256"] as string | undefined;
+        const event = req.headers["x-github-event"] as string | undefined;
 
-            if (!signature) return reply.status(401).send({ error: 'No signature' });
-            if (!event || event !== 'push') return reply.status(400).send({ error: 'Invalid event type' });
-
-            const payload: any = req.body
-            // Validasi repo dan branch
-            if (payload.repository?.full_name !== ALLOWED_REPO) {
-                return reply.status(403).send({ error: 'Unauthorized repository' });
-            }
-            if (payload.ref !== ALLOWED_BRANCH) {
-                return reply.status(403).send({ error: 'Push is not to main branch' });
-            }
-
-            const msg = `Deploy triggered for repo: ${payload.repository?.name}, branch: ${payload.ref}, by: ${payload.pusher?.name}`
-            logger.info(msg);
-
-            // Jalankan deploy script
-            exec('cd /var/www/marketplaceservice && ./deploy.sh', (err, stdout, stderr) => {
-                if (err) logger.error(`Deploy error: ${stderr}`);
-                else logger.info(`Deploy output: ${stdout}`);
-            });
-
-            return reply.send({ status: 'Deploy triggered ✅', time: new Date(), message: msg });
-        } catch (err) {
-            logger.error('Webhook processing error:', err);
-            return reply.status(500).send({ error: 'Internal server error' });
+        if (!signature) {
+          return reply.status(401).send({ error: "No signature" });
         }
-    });
+
+        if (event !== "push") {
+          return reply.status(400).send({ error: "Invalid event type" });
+        }
+
+        const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
+        if (!webhookSecret) {
+          logger.error("GITHUB_WEBHOOK_SECRET env variable is missing");
+          return reply.status(500).send({ error: "Server configuration error" });
+        }
+
+        if (!DEPLOY_COMMAND) {
+          return reply.status(503).send({ error: "Deploy command is not configured" });
+        }
+
+        const rawBody = req.rawBody ?? (typeof req.body === "string" ? req.body : JSON.stringify(req.body));
+        if (!verifyGithubSignature(rawBody, signature, webhookSecret)) {
+          return reply.status(401).send({ error: "Invalid signature" });
+        }
+
+        const payload = req.body as any;
+        if (payload.repository?.full_name !== ALLOWED_REPO) {
+          return reply.status(403).send({ error: "Unauthorized repository" });
+        }
+
+        if (payload.ref !== ALLOWED_BRANCH) {
+          return reply.status(403).send({ error: "Push is not to allowed branch" });
+        }
+
+        const message = `Deploy triggered for repo: ${payload.repository?.name}, branch: ${payload.ref}, by: ${payload.pusher?.name}`;
+        logger.info(message);
+
+        exec(DEPLOY_COMMAND, (err, stdout, stderr) => {
+          if (err) {
+            logger.error({ err, stderr }, "Deploy command failed");
+            return;
+          }
+
+          logger.info({ stdout }, "Deploy command completed");
+        });
+
+        return reply.send({
+          status: "Deploy triggered",
+          time: new Date().toISOString(),
+          message,
+        });
+      } catch (err) {
+        logger.error({ err }, "Webhook processing error");
+        return reply.status(500).send({ error: "Internal server error" });
+      }
+    },
+  );
 }

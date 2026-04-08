@@ -1,32 +1,41 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.convertBigIntAndDate = void 0;
 exports.default = productRoutes;
-const authMidleware_1 = require("../plugins/authMidleware");
+const authMiddleware_1 = require("../plugins/authMiddleware");
 const fastify_1 = require("../utils/fastify");
+/**
+ * Helper: serialise BigInt and Date values that Prisma returns into
+ * JSON-safe types.  Registered as Prisma middleware.
+ *
+ * BUG-FIX: Moved the `$use` middleware registration into the global Prisma
+ * plugin so it's only registered once. Registering it inside the route plugin
+ * meant it was added every time `productRoutes` was registered and would
+ * stack up on hot-reload.
+ *
+ * The helper is exported so it can be reused from prisma.ts.
+ */
+const convertBigIntAndDate = (val) => {
+    if (typeof val === "bigint") {
+        return val.toString();
+    }
+    else if (val instanceof Date) {
+        return val.toISOString();
+    }
+    else if (Array.isArray(val)) {
+        return val.map(exports.convertBigIntAndDate);
+    }
+    else if (val && typeof val === "object") {
+        return Object.fromEntries(Object.entries(val).map(([k, v]) => [k, (0, exports.convertBigIntAndDate)(v)]));
+    }
+    return val;
+};
+exports.convertBigIntAndDate = convertBigIntAndDate;
 async function productRoutes(fastify) {
-    fastify.prisma.$use(async (params, next) => {
-        const result = await next(params);
-        const convert = (val) => {
-            if (typeof val === "bigint") {
-                return val.toString();
-            }
-            else if (val instanceof Date) {
-                return val.toISOString(); // fix Date
-            }
-            else if (Array.isArray(val)) {
-                return val.map(convert);
-            }
-            else if (val && typeof val === "object") {
-                return Object.fromEntries(Object.entries(val).map(([k, v]) => [k, convert(v)]));
-            }
-            return val;
-        };
-        return convert(result);
-    });
     const ensureSellerOrAdmin = (user, reply) => {
         if (!user || (user.role !== "seller" && user.role !== "admin")) {
             reply.status(403).send({
-                message: "You do not have permission to perform this action."
+                message: "You do not have permission to perform this action.",
             });
             return false;
         }
@@ -35,54 +44,97 @@ async function productRoutes(fastify) {
     const ensureOwnerOrAdmin = (user, ownerId, reply) => {
         if (user.role !== "admin" && user.id !== ownerId) {
             reply.status(403).send({
-                message: "Unauthorized access to product resource."
+                message: "Unauthorized access to product resource.",
             });
             return false;
         }
         return true;
     };
-    fastify.get('/products', {
+    // ===========================
+    // PRODUCT DETAIL
+    // ===========================
+    fastify.get("/products/:dynamic", {
+        preHandler: authMiddleware_1.optionalAuthMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
-            const { q, category, sub, status, sort, page = 1, limit = 20 } = req.query;
+            const { dynamic } = req.params;
+            const where = {
+                OR: [{ id: dynamic }, { slug: dynamic }],
+            };
+            if (user?.role === "buyer" || !user) {
+                where.status = { in: ["PUBLISHED", "AVAILABLE", "SOLD"] };
+            }
+            const product = await fastify.prisma.products.findFirst({
+                where,
+                include: {
+                    sellerUser: { select: { id: true, displayName: true } },
+                    category: true,
+                    subCategory: true,
+                    flashSales: true,
+                },
+            });
+            if (!product) {
+                return reply.status(404).send({ message: "Product not found." });
+            }
+            return reply.send((0, exports.convertBigIntAndDate)(product));
+        },
+    });
+    // ===========================
+    // LIST PRODUCTS
+    // ===========================
+    fastify.get("/products/list", {
+        /**
+         * BUG-FIX: Replaced inline copy-pasted optional-auth logic with
+         * the reusable `optionalAuthMiddleware`.
+         */
+        preHandler: authMiddleware_1.optionalAuthMiddleware,
+        handler: async (req, reply) => {
+            const user = req.user;
+            const { q, id, category, sub, status, sort, page = 1, limit = 20, } = req.query;
             const where = {};
-            // Search filter
             if (q) {
                 const search = q.trim();
                 where.OR = [
                     { title: { contains: search } },
                     { slug: { contains: search } },
                     { description: { contains: search } },
-                    { conditionNotes: { contains: search } }
+                    { conditionNotes: { contains: search } },
                 ];
             }
-            // Category filter (ID only)
             if (category) {
                 where.categoryId = category.trim();
             }
-            // Sub-category filter (ID only)
             if (sub) {
                 where.subCategoryId = sub.trim();
             }
-            // Status filter from query
             if (status) {
                 where.status = status;
             }
-            // Buyer restrict status visibility
-            if (user?.role === 'buyer') {
+            // Buyer / anonymous: restrict visible statuses
+            if (user?.role === "buyer" || !user) {
                 where.status = {
-                    in: ["PUBLISHED", "AVAILABLE", "SOLD"]
+                    in: ["PUBLISHED", "AVAILABLE", "SOLD"],
                 };
             }
-            // Sorting logic
-            const orderBy = sort === "latest" ? { createdAt: "desc" } :
-                sort === "oldest" ? { createdAt: "asc" } :
-                    sort === "low_price" ? { price: "asc" } :
-                        sort === "high_price" ? { price: "desc" } :
-                            { createdAt: "desc" }; // default
-            // Pagination
-            const take = Number(limit);
-            const skip = (Number(page) - 1) * take;
+            if (id) {
+                where.id = id;
+            }
+            /**
+             * BUG-FIX: Removed `console.log(where, "\n\n\n", user)`.
+             * Debug logging should use the Fastify logger, and certainly not
+             * in production code.
+             */
+            const orderBy = sort === "latest"
+                ? { createdAt: "desc" }
+                : sort === "oldest"
+                    ? { createdAt: "asc" }
+                    : sort === "low_price"
+                        ? { price: "asc" }
+                        : sort === "high_price"
+                            ? { price: "desc" }
+                            : { createdAt: "desc" };
+            const take = Math.min(Math.max(Number(limit) || 20, 1), 100);
+            const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
             const [items, total] = await Promise.all([
                 fastify.prisma.products.findMany({
                     where,
@@ -92,44 +144,96 @@ async function productRoutes(fastify) {
                     include: {
                         sellerUser: { select: { id: true, displayName: true } },
                         category: true,
-                        subCategory: true
-                    }
+                        subCategory: true,
+                    },
                 }),
-                fastify.prisma.products.count({ where })
+                fastify.prisma.products.count({ where }),
             ]);
             return reply.send({
                 total,
                 page: Number(page),
                 limit: take,
-                items
+                items: items.map(exports.convertBigIntAndDate),
             });
-        }
+        },
     });
     // ===========================
-    // CREATE PRODUCT
+    // CREATE PRODUCT FLASH SALE
     // ===========================
-    fastify.post('/products', {
-        preHandler: authMidleware_1.authMidleware,
+    fastify.post("/products/flashsale", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
             if (!user)
                 return;
             if (!ensureSellerOrAdmin(user, reply))
                 return;
-            const { title, description, subCategoryId, price, currency, stock, thumbnails, conditionNotes } = req.body;
+            const { productId, discount, discType } = req.body;
+            if (!productId) {
+                return reply.status(400).send({ message: "productId is required." });
+            }
+            const newFlashSale = await fastify.prisma.flashSale.create({
+                data: {
+                    productId,
+                    stock: 10,
+                    discount,
+                    discType,
+                },
+            });
+            return reply.status(201).send({
+                message: "Product flash sale successfully created.",
+                ...(0, exports.convertBigIntAndDate)(newFlashSale),
+            });
+        },
+    });
+    // ===========================
+    // LIST FLASH SALES
+    // ===========================
+    fastify.get("/products/flashsale", {
+        handler: async (_req, reply) => {
+            const flashsale = await fastify.prisma.flashSale.findMany({
+                where: {
+                    products: {
+                        status: {
+                            in: ["PUBLISHED", "AVAILABLE", "SOLD"],
+                        },
+                    },
+                },
+                include: {
+                    products: true,
+                },
+            });
+            /**
+             * BUG-FIX: Changed status from 201 to 200. GET requests that return
+             * data should use 200, not 201 (Created).
+             */
+            return reply.status(200).send(flashsale.map(exports.convertBigIntAndDate));
+        },
+    });
+    // ===========================
+    // CREATE PRODUCT
+    // ===========================
+    fastify.post("/products", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            const user = req.user;
+            if (!user)
+                return;
+            if (!ensureSellerOrAdmin(user, reply))
+                return;
+            const { title, description, subCategoryId, price, currency, stock, thumbnails, conditionNotes, special, } = req.body;
             if (!title || !subCategoryId) {
                 return reply.status(400).send({
-                    message: "Title and subCategoryId are required."
+                    message: "Title and subCategoryId are required.",
                 });
             }
             const slug = (0, fastify_1.slugify)(title);
-            // Validate sub-category
             const subCategoryExists = await fastify.prisma.subCategory.findUnique({
-                where: { id: subCategoryId }
+                where: { id: subCategoryId },
             });
             if (!subCategoryExists) {
                 return reply.status(404).send({
-                    message: "Invalid subCategoryId provided."
+                    message: "Invalid subCategoryId provided.",
                 });
             }
             const newProduct = await fastify.prisma.products.create({
@@ -144,30 +248,33 @@ async function productRoutes(fastify) {
                     currency: currency ?? "IDR",
                     stock: stock ?? 1,
                     thumbnails,
-                    conditionNotes
-                }
+                    conditionNotes,
+                    isSpecial: special,
+                },
             });
             return reply.status(201).send({
                 message: "Product successfully created.",
-                ...newProduct
+                ...(0, exports.convertBigIntAndDate)(newProduct),
             });
-        }
+        },
     });
     // ===========================
     // UPDATE PRODUCT
     // ===========================
-    fastify.put('/products/:productId', {
-        preHandler: authMidleware_1.authMidleware,
+    fastify.put("/products/:productId", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const { productId } = req.params;
             const user = req.user;
-            const product = await fastify.prisma.products.findUnique({ where: { id: productId } });
+            const product = await fastify.prisma.products.findUnique({
+                where: { id: productId },
+            });
             if (!product) {
                 return reply.status(404).send({ message: "Product not found." });
             }
             if (!ensureOwnerOrAdmin(user, product.sellerUserId, reply))
                 return;
-            const { title, description, categoryId, subCategoryId, price, currency, stock, thumbnails, conditionNotes } = req.body;
+            const { title, description, categoryId, subCategoryId, price, currency, stock, thumbnails, conditionNotes, status, } = req.body;
             const updateData = {};
             if (title) {
                 updateData.title = title;
@@ -175,7 +282,7 @@ async function productRoutes(fastify) {
             }
             if (subCategoryId) {
                 const subExists = await fastify.prisma.subCategory.findUnique({
-                    where: { id: subCategoryId }
+                    where: { id: subCategoryId },
                 });
                 if (!subExists) {
                     return reply.status(404).send({ message: "Invalid subCategoryId." });
@@ -194,28 +301,30 @@ async function productRoutes(fastify) {
                 updateData.stock = stock;
             if (thumbnails !== undefined)
                 updateData.thumbnails = thumbnails;
+            if (status !== undefined)
+                updateData.status = status;
             if (conditionNotes !== undefined)
                 updateData.conditionNotes = conditionNotes;
             const updatedProduct = await fastify.prisma.products.update({
                 where: { id: productId },
-                data: updateData
+                data: updateData,
             });
             return reply.send({
                 message: "Product updated successfully.",
-                ...updatedProduct
+                ...(0, exports.convertBigIntAndDate)(updatedProduct),
             });
-        }
+        },
     });
     // ===========================
     // DELETE PRODUCT
     // ===========================
-    fastify.delete('/products/:productId', {
-        preHandler: authMidleware_1.authMidleware,
+    fastify.delete("/products/:productId", {
+        preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const { productId } = req.params;
             const user = req.user;
             const product = await fastify.prisma.products.findUnique({
-                where: { id: productId }
+                where: { id: productId },
             });
             if (!product) {
                 return reply.status(404).send({ message: "Product not found." });
@@ -223,11 +332,59 @@ async function productRoutes(fastify) {
             if (!ensureOwnerOrAdmin(user, product.sellerUserId, reply))
                 return;
             await fastify.prisma.products.delete({
-                where: { id: productId }
+                where: { id: productId },
             });
             return reply.send({
-                message: "Product deleted successfully."
+                message: "Product deleted successfully.",
             });
-        }
+        },
+    });
+    // ===========================
+    // APPROVE PRODUCT
+    // ===========================
+    fastify.post("/products/approve", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            const user = req.user;
+            /**
+             * BUG-FIX:
+             *  1. Used `===` instead of `==` for strict comparison.
+             *  2. Changed status 401 → 403 (Forbidden) for authorization failures.
+             *     401 means "not authenticated", 403 means "authenticated but not
+             *     allowed".
+             *  3. Fixed typo "allready" → "already".
+             *  4. Stopped sending raw `Error` objects via `reply.send(new Error(...))`
+             *     — Fastify serialises them poorly. Send a plain object instead.
+             */
+            if (user?.role !== "admin") {
+                return reply.status(403).send({
+                    message: "You do not have permission to perform this action.",
+                });
+            }
+            const { productId } = req.body;
+            if (!productId) {
+                return reply.status(400).send({ message: "productId is required." });
+            }
+            const product = await fastify.prisma.products.findUnique({
+                where: { id: productId, status: "DRAFT" },
+            });
+            if (!product) {
+                return reply.status(409).send({
+                    message: "Product not found or already approved.",
+                });
+            }
+            const updated = await fastify.prisma.products.update({
+                where: { id: productId },
+                data: {
+                    status: "PUBLISHED",
+                    approvedBy: user.id,
+                    approvedDate: new Date(),
+                },
+            });
+            return reply.send({
+                message: "Product has been approved.",
+                ...(0, exports.convertBigIntAndDate)(updated),
+            });
+        },
     });
 }

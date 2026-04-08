@@ -9,7 +9,6 @@ datasource db {
 
 enum UserRole {
   buyer
-  seller
   admin
 }
 
@@ -18,18 +17,20 @@ enum Currency {
 }
 
 model User {
-  id               String     @id @default(uuid())
-  email            String     @unique
+  id               String         @id @default(uuid())
+  email            String         @unique
   displayName      String?
   passwordHash     String?
-  loginProvider    String     @default("email") // email, google
-  role             UserRole?  @default(buyer)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  isSellerVerified Boolean    @default(false)
-  emailVerified    Boolean    @default(false)
-  currency         Currency   @default(IDR)
+  loginProvider    String         @default("email") // email, google
+  role             UserRole?      @default(buyer)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  isSellerVerified Boolean        @default(false)
+  emailVerified    Boolean        @default(false)
+  currency         Currency       @default(IDR)
   products         Products[]
+  transactions     Transactions[]
+  // roleId 1
 }
 
 model LoginSession {
@@ -44,7 +45,7 @@ model LoginSession {
 
 enum ProductPublishStatus {
   DRAFT
-  PUBLUSHED
+  PUBLISHED
   AVAILABLE
   RESERVED
   SOLD
@@ -64,6 +65,13 @@ model Category {
   @@index([title], name: "idx_category_name")
 }
 
+model Badges {
+  id            Int           @unique @default(autoincrement())
+  label         String
+  color         String // hex color
+  subCategories SubCategory[]
+}
+
 model SubCategory {
   id    String @id @default(uuid())
   title String
@@ -72,7 +80,18 @@ model SubCategory {
   categoryId String
   category   Category @relation(fields: [categoryId], references: [id])
 
-  products Products[]
+  products    Products[]
+  thumbnail   String?
+  description String?
+  banners     Json?
+  brand       String?
+
+  instant Boolean @default(true)
+
+  popular Boolean @default(false)
+
+  badge   Badges? @relation(fields: [badgeId], references: [id])
+  badgeId Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
@@ -83,6 +102,7 @@ model SubCategory {
 
 model Products {
   id           String  @id @default(uuid())
+  skuCode      String?
   sellerUserId String
   sellerUser   User    @relation(fields: [sellerUserId], references: [id])
   title        String
@@ -103,9 +123,231 @@ model Products {
   conditionNotes String               @db.LongText
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @default(now())
+  approvedBy     String?
+  isSpecial      Boolean              @default(false)
+  instant        Boolean              @default(true)
+
+  approvedDate DateTime?
+  transactions Transactions[]
+  flashSales   FlashSale[]
 
   @@index([sellerUserId], name: "idx_products_seller")
   @@index([status], name: "idx_products_status")
   @@index([categoryId], name: "idx_products_category")
   @@index([subCategoryId], name: "idx_products_subcategory")
+}
+
+enum FlashSaleDiscType {
+  percent
+  flat
+}
+
+model FlashSale {
+  id Int @unique @default(autoincrement())
+
+  products  Products? @relation(fields: [productId], references: [id])
+  productId String?
+
+  discType FlashSaleDiscType @default(flat)
+  discount BigInt            @default(0)
+
+  sellCount Int      @default(0)
+  stock     Int      @default(50)
+  createdAt DateTime @default(now())
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUND
+}
+
+enum OrderStatus {
+  WAIT_PAYMENT // menunggu pembayaran
+  PENDING // menunggu di proses
+  SUCCESS
+  FAILED
+}
+
+model Transactions {
+  id String @unique @default(uuid())
+
+  trxId String @unique
+
+  skuCode String?
+
+  userAccountData Json?
+  userInputDetail Json?
+
+  paymentDetails Json
+  product        Products @relation(fields: [productId], references: [id])
+  productId      String
+  quantity       Int
+
+  fee        Float
+  price      BigInt
+  totalPrice BigInt @default(0)
+
+  paymentStatus PaymentStatus
+  orderStatus   OrderStatus
+  orderNotes    String?       @db.LongText
+  serialNumber  String?
+
+  user        User?   @relation(fields: [userId], references: [id])
+  userId      String?
+  phoneNumber String?
+  email       String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  successAt DateTime?
+
+  discount        Float? @default(0)
+  discountedPrice Float?
+  flashSaleId     Int?
+
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+  paymentMethodId Int?
+  providerData    Json?
+}
+
+enum SourceType {
+  DUITKU
+}
+
+enum FeeType {
+  flat
+  percent
+}
+
+enum PaymentVisibility {
+  active
+  nonactive
+}
+
+enum PaymentGroup {
+  qris
+  va
+  retail
+  ewallet
+}
+
+model PaymentMethod {
+  id                Int               @id @default(autoincrement())
+  methodCode        String            @unique
+  paymentName       String
+  source            SourceType
+  thumbnail         String
+  feeType           FeeType
+  feeValue          Float
+  paymentVisibility PaymentVisibility
+  group             PaymentGroup?
+  transactions      Transactions[]
+}
+
+model SiteConfig {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ── Identitas Utama ────────────────────────
+  siteName    String  @db.VarChar(100) // "WTPANJAY"
+  tagline     String? @db.VarChar(200) // "Top-up game terpercaya"
+  description String? @db.Text // Deskripsi singkat brand
+  siteUrl     String  @db.VarChar(255) // "https://wtpanjay.com"
+  logoUrl     String? @db.VarChar(500) // URL logo utama
+  logoAlt     String? @db.VarChar(150) // Alt text logo (accessibility)
+  faviconUrl  String? @db.VarChar(500) // URL favicon .ico / .png
+  timezone    String  @default("Asia/Jakarta") @db.VarChar(50)
+  locale      String  @default("id-ID") @db.VarChar(10)
+
+  // ── SEO — Default Meta ─────────────────────
+  // Dipakai saat halaman tidak punya meta sendiri
+  metaTitle       String? @db.VarChar(70) // Maks 60–70 karakter
+  metaDescription String? @db.VarChar(165) // Maks 150–165 karakter
+  metaKeywords    String? @db.VarChar(500) // Comma-separated, opsional
+  metaRobots      String  @default("index, follow") @db.VarChar(100)
+  canonicalUrl    String? @db.VarChar(255) // Override canonical default
+
+  // ── SEO — Open Graph (Facebook/WhatsApp) ──
+  ogTitle       String? @db.VarChar(95) // Maks 85–95 karakter
+  ogDescription String? @db.VarChar(300) // Maks 200–300 karakter
+  ogImage       String? @db.VarChar(500) // URL gambar 1200x630px
+  ogImageAlt    String? @db.VarChar(150) // Alt text OG image
+  ogType        String  @default("website") @db.VarChar(50)
+  ogLocale      String  @default("id_ID") @db.VarChar(10)
+  fbAppId       String? @db.VarChar(50) // Facebook App ID (opsional)
+
+  // ── SEO — Twitter / X Card ────────────────
+  twitterCard        String  @default("summary_large_image") @db.VarChar(30)
+  twitterSite        String? @db.VarChar(50) // "@wtpanjay"
+  twitterCreator     String? @db.VarChar(50) // "@username pemilik"
+  twitterTitle       String? @db.VarChar(70)
+  twitterDescription String? @db.VarChar(200)
+  twitterImage       String? @db.VarChar(500) // URL gambar 1200x628px
+
+  // ── SEO — Schema.org / JSON-LD ────────────
+  schemaOrgType String  @default("Organization") @db.VarChar(50)
+  schemaOrgJson String? @db.LongText // JSON-LD custom (raw JSON)
+
+  // ── SEO — Verifikasi Mesin Pencari ────────
+  googleSiteVerification String? @db.VarChar(100)
+  bingSiteVerification   String? @db.VarChar(100)
+
+  // ── Analytics & Tracking ──────────────────
+  googleAnalyticsId  String? @db.VarChar(30) // "G-XXXXXXXXXX"
+  googleTagManagerId String? @db.VarChar(30) // "GTM-XXXXXXX"
+  facebookPixelId    String? @db.VarChar(30)
+  tiktokPixelId      String? @db.VarChar(50)
+
+  // ── Kontak & Support ──────────────────────
+  contactEmail    String? @db.VarChar(150)
+  supportEmail    String? @db.VarChar(150)
+  supportWhatsapp String? @db.VarChar(20) // "+628xxxxxxxxxx"
+  address         String? @db.Text
+
+  // ── Media Sosial ──────────────────────────
+  facebookUrl  String? @db.VarChar(255)
+  instagramUrl String? @db.VarChar(255)
+  twitterUrl   String? @db.VarChar(255)
+  youtubeUrl   String? @db.VarChar(255)
+  tiktokUrl    String? @db.VarChar(255)
+  discordUrl   String? @db.VarChar(255)
+  telegramUrl  String? @db.VarChar(255)
+
+  // ── Maintenance Mode ──────────────────────
+  maintenanceMode    Boolean @default(false)
+  maintenanceTitle   String? @db.VarChar(100)
+  maintenanceMessage String? @db.Text
+
+  // ── Branding & Tampilan ───────────────────
+  primaryColor   String @default("#f5c518") @db.VarChar(20)
+  secondaryColor String @default("#0e0e0e") @db.VarChar(20)
+  accentColor    String @default("#ffffff") @db.VarChar(20)
+
+  // ── Relasi ────────────────────────────────
+  extras SiteConfigExtra[]
+
+  @@map("site_config")
+}
+
+// ══════════════════════════════════════════════
+// SITE CONFIG EXTRA  (key-value untuk field custom)
+// Contoh: "whatsapp_business_id", "snap_token_key", dll
+// ══════════════════════════════════════════════
+model SiteConfigExtra {
+  id           Int      @id @default(autoincrement())
+  siteConfigId Int
+  key          String   @db.VarChar(100) // "snap_client_key"
+  value        String?  @db.Text // nilai config
+  description  String?  @db.VarChar(255) // "Midtrans Snap client key"
+  isSecret     Boolean  @default(false) // kalau true, jangan kirim ke frontend
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  siteConfig SiteConfig @relation(fields: [siteConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([siteConfigId, key])
+  @@map("site_config_extra")
 }

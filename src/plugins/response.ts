@@ -1,53 +1,71 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance } from "fastify";
+
 export default function (fastify: FastifyInstance) {
-    fastify.addHook('onRequest', async (req, _reply) => {
-        (req as any).startTime = process.hrtime()
-    })
+  fastify.addHook("onRequest", async (req) => {
+    req.startTime = process.hrtime();
+  });
 
-    // 🧱 Bungkus response
-    fastify.addHook('onSend', async (req, reply, payload) => {
-        const diff = process.hrtime((req as any).startTime)
-        const durationMs = (diff[0] * 1e3 + diff[1] / 1e6).toFixed(2) + 'ms'
+  fastify.addHook("onSend", async (req, reply, payload) => {
+    const contentType = reply.getHeader("content-type") as string | undefined;
+    if (!contentType || !contentType.includes("application/json")) {
+      return payload;
+    }
 
-        let parsed
-        try {
-            parsed = JSON.parse(payload as string)
-        } catch (e) {
-            parsed = payload // fallback kalo payload bukan JSON
-        }
+    const start = req.startTime ?? process.hrtime();
+    const diff = process.hrtime(start);
+    const durationMs = (diff[0] * 1e3 + diff[1] / 1e6).toFixed(2) + "ms";
 
-        const wrapped = {
-            status: reply.statusCode,
-            duration: durationMs,
-            data: parsed,
-        }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(payload as string);
+    } catch {
+      return payload;
+    }
 
-        return JSON.stringify(wrapped)
-    })
+    return JSON.stringify({
+      status: reply.statusCode,
+      duration: durationMs,
+      data: parsed,
+    });
+  });
 
-    // fastify.setErrorHandler((error, req, reply) => {
-    //     const diff = process.hrtime((req as any).startTime)
-    //     const durationMs = (diff[0] * 1e3 + diff[1] / 1e6).toFixed(2) + 'ms'
+  fastify.setErrorHandler((error: any, req, reply) => {
+    const start = req.startTime ?? process.hrtime();
+    const diff = process.hrtime(start);
+    const durationMs = (diff[0] * 1e3 + diff[1] / 1e6).toFixed(2) + "ms";
 
-    //     // Prisma error handling (bisa dikembangin lagi)
-    //     let message = 'Terjadi kesalahan di server'
-    //     let code = 'INTERNAL_SERVER_ERROR'
-    //     let statusCode = 500
+    if (error?.code === "P2002" && Array.isArray(error?.meta?.target)) {
+      const targetFields = (error.meta.target as string[]).join(", ");
+      return reply.status(409).send({
+        code: "DUPLICATE_ENTRY",
+        message: `${targetFields} sudah terdaftar`,
+        duration: durationMs,
+      });
+    }
 
-    //     if (error.code === 'P2002' && Array.isArray((error as any).meta?.target)) {
-    //         const targetFields = (error as any).meta.target.join(', ')
-    //         return reply.status(409).send({
-    //             code: 'DUPLICATE_ENTRY',
-    //             message: `${targetFields} sudah terdaftar`,
-    //         })
-    //     }
+    if (error?.code === "P2025") {
+      return reply.status(404).send({
+        code: "NOT_FOUND",
+        message: "Data tidak ditemukan",
+        duration: durationMs,
+      });
+    }
 
-    //     // Format final
-    //     reply.status(statusCode).send({
-    //         error: 'Error',
-    //         code,
-    //         message
-    //     })
-    // })
+    if (error?.validation) {
+      return reply.status(400).send({
+        code: "VALIDATION_ERROR",
+        message: error.message,
+        duration: durationMs,
+      });
+    }
 
+    fastify.log.error(error);
+    const statusCode = error?.statusCode ?? 500;
+
+    return reply.status(statusCode).send({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Terjadi kesalahan di server",
+      duration: durationMs,
+    });
+  });
 }

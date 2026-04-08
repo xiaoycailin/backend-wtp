@@ -10,8 +10,8 @@ const prisma = new client_1.PrismaClient();
 exports.prisma = prisma;
 exports.default = (0, fastify_plugin_1.default)(async (fastify) => {
     await prisma.$connect();
-    fastify.decorate('prisma', prisma);
-    fastify.addHook('onClose', async (fastifyInstance) => {
-        await fastifyInstance.prisma.$disconnect();
+    fastify.decorate("prisma", prisma);
+    fastify.addHook("onClose", async () => {
+        await prisma.$disconnect();
     });
 });

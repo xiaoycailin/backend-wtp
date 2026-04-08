@@ -1,129 +1,169 @@
-
-import { authMidleware } from '../plugins/authMidleware';
-import { UserFieldPayload, createUserLoginSchema, createUserSchema } from '../schemas/user.schema';
-import { hashPassword, verifyPassword } from '../utils/hash';
-import { createToken } from '../utils/token';
-import { FastInstance } from '../utils/fastify';
+import { authMiddleware } from "../plugins/authMiddleware";
+import {
+  UserFieldPayload,
+  createUserLoginSchema,
+  createUserSchema,
+} from "../schemas/user.schema";
+import { hashPassword, verifyPassword } from "../utils/hash";
+import { createToken } from "../utils/token";
+import { FastInstance } from "../utils/fastify";
 
 export default async function userRoutes(fastify: FastInstance) {
-    fastify.get('/users/self', {
-        preHandler: authMidleware,
-        handler: async (req, reply) => {
-            // TODO: patch response
-            reply.send(req.user)
+  fastify.get("/users/self", {
+    preHandler: authMiddleware,
+    handler: async (req, reply) => {
+      reply.send(req.user);
+    },
+  });
+
+  fastify.post("/users/auth/logout", {
+    preHandler: authMiddleware,
+    handler: async (req, reply) => {
+      const header = req.headers.authorization;
+      if (!header?.startsWith("Bearer ")) {
+        return reply.status(400).send({ message: "Invalid access token" });
+      }
+
+      const bearerToken = header.replace("Bearer ", "").trim();
+
+      await fastify.prisma.loginSession.deleteMany({
+        where: { jwtToken: bearerToken },
+      });
+
+      return reply.send({ message: "Logout successful." });
+    },
+  });
+
+  fastify.get("/users/auth/logout", {
+    preHandler: authMiddleware,
+    handler: async (req, reply) => {
+      const header = req.headers.authorization;
+      if (!header?.startsWith("Bearer ")) {
+        return reply.status(400).send({ message: "Invalid access token" });
+      }
+
+      const bearerToken = header.replace("Bearer ", "").trim();
+
+      await fastify.prisma.loginSession.deleteMany({
+        where: { jwtToken: bearerToken },
+      });
+
+      return reply.send({ message: "Logout successful." });
+    },
+  });
+
+  fastify.post("/users/auth/register", {
+    schema: {
+      body: createUserSchema,
+    },
+    handler: async (req, reply) => {
+      const body = req.body as UserFieldPayload;
+
+      let passwordHash: string | undefined;
+      if (body.password) {
+        passwordHash = await hashPassword(body.password);
+      }
+
+      const ipList = [req.ip, ...(req.ips || [])].filter(Boolean);
+      const ipaddr = ipList.join(",");
+
+      try {
+        const user = await fastify.prisma.user.create({
+          data: {
+            email: body.email,
+            displayName: body.displayName,
+            passwordHash,
+            loginProvider: body.loginProvider,
+            role: body.role,
+          },
+        });
+
+        const userToken = createToken({
+          id: user.id,
+          displayName: user.displayName,
+          email: user.email,
+          role: user.role,
+        });
+
+        const session = await fastify.prisma.loginSession.create({
+          data: {
+            userId: user.id,
+            user_agent: req.headers["user-agent"],
+            ip_addr: ipaddr,
+            jwtToken: userToken,
+            lastSeenAt: new Date(),
+          },
+        });
+
+        return reply.status(201).send(session);
+      } catch (error: any) {
+        if (error.code === "P2002") {
+          return reply.status(409).send({
+            message:
+              "Mohon gunakan email lain yang belum pernah digunakan sebelumnya.",
+          });
         }
-    })
 
-    fastify.post("/users/auth/register", {
-        schema: {
-            body: createUserSchema,
+        throw error;
+      }
+    },
+  });
+
+  fastify.post("/users/auth/login", {
+    schema: {
+      body: createUserLoginSchema,
+    },
+    handler: async (req, reply) => {
+      const ipList = [req.ip, ...(req.ips || [])].filter(Boolean);
+      const ipaddr = ipList.join(",");
+      const body = req.body as UserFieldPayload;
+
+      const userByEmail = await fastify.prisma.user.findFirst({
+        where: { email: body.email },
+      });
+
+      if (!userByEmail || !userByEmail.passwordHash) {
+        return reply.status(401).send({
+          message: "Email atau password yang Anda masukan salah.",
+        });
+      }
+
+      const isValid = await verifyPassword(
+        body.password!,
+        userByEmail.passwordHash,
+      );
+
+      if (!isValid) {
+        return reply.status(401).send({
+          message: "Email atau password yang Anda masukan salah.",
+        });
+      }
+
+      const userToken = createToken({
+        id: userByEmail.id,
+        displayName: userByEmail.displayName,
+        email: userByEmail.email,
+        role: userByEmail.role,
+      });
+
+      const session = await fastify.prisma.loginSession.upsert({
+        where: { userId: userByEmail.id },
+        update: {
+          user_agent: req.headers["user-agent"],
+          ip_addr: ipaddr,
+          jwtToken: userToken,
+          lastSeenAt: new Date(),
         },
-        handler: async (req, reply) => {
-            const body = req.body as UserFieldPayload;
-            if (body.password) body.password = await hashPassword(body.password)
-            body.passwordHash = body.password
-            delete body.password
-            try {
-                const user = await fastify.prisma.user.create({
-                    data: body,
-                })
-                reply.send(user)
-            } catch (error: any) {
-                const stack: string = error.stack
-
-                if (stack.includes("Unique constraint failed on the constraint: `User_email_key`")) {
-                    reply.send({
-                        message: "Mohon gunakan email lain yang belum pernah digunakan sebelumnya.",
-                    })
-                }
-            }
+        create: {
+          userId: userByEmail.id,
+          user_agent: req.headers["user-agent"],
+          ip_addr: ipaddr,
+          jwtToken: userToken,
+          lastSeenAt: new Date(),
         },
-    })
+      });
 
-    fastify.post("/users/auth/login", {
-        schema: {
-            body: createUserLoginSchema,
-        },
-        handler: async (req, reply) => {
-            const ipList = [req.ip, ...(req.ips || [])].filter(Boolean);
-            const ipaddr = ipList.join(",");
-
-            const body = req.body as UserFieldPayload;
-            if (!body.password && !body.email) {
-                return reply.send({
-                    message: "Harap lengkapi kolom Email dan Password."
-                })
-            } else {
-                try {
-                    const userByEmail = await fastify.prisma.user.findFirst({
-                        where: {
-                            email: body.email,
-                        }
-                    })
-
-                    if (userByEmail) {
-                        const hasVerify = await verifyPassword(body.password!, userByEmail.passwordHash!)
-                        if (hasVerify) {
-                            // create token and put to table loginSession
-                            const userToken = createToken({
-                                id: userByEmail.id,
-                                displayName: userByEmail.displayName,
-                                email: userByEmail.email,
-                                role: userByEmail.role,
-                            })
-
-
-                            // put token to database
-                            const fLoginSession = await fastify.prisma.loginSession.findFirst({ where: { userId: userByEmail.id } })
-
-
-                            if (fLoginSession) {
-                                // update token yang sudah ada
-                                const updateDataSession = await fastify.prisma.loginSession.update({
-                                    where: { id: fLoginSession.id, userId: userByEmail.id },
-                                    data: {
-                                        user_agent: req.headers['user-agent'],
-                                        ip_addr: ipaddr,
-                                        jwtToken: userToken,
-                                        lastSeenAt: new Date()
-                                    }
-                                })
-                                reply.send(updateDataSession)
-                            } else {
-                                try {
-                                    const createDataSession = await fastify.prisma.loginSession.create({
-                                        data: {
-                                            userId: userByEmail.id,
-                                            user_agent: req.headers['user-agent'],
-                                            ip_addr: ipaddr,
-                                            jwtToken: userToken,
-                                            lastSeenAt: new Date()
-                                        }
-                                    })
-                                    reply.send(createDataSession)
-                                } catch (error) {
-                                    reply.send(error)
-                                }
-                            }
-
-                        } else {
-                            reply.send({ message: "Email atau password yang Anda masukan salah." })
-                        }
-                    } else {
-                        reply.send({
-                            message: "Email atau password yang Anda masukan salah."
-                        })
-                    }
-                } catch (error: any) {
-                    const stack: string = error.stack
-
-                    if (stack.includes("Unique constraint failed on the constraint: `User_email_key`")) {
-                        reply.send({
-                            message: stack,
-                        })
-                    }
-                }
-            }
-        },
-    })
+      return reply.send(session);
+    },
+  });
 }
