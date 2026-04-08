@@ -1,0 +1,822 @@
+# Backend WTP API Documentation
+
+Dokumentasi lengkap untuk seluruh route yang terdaftar di server.
+
+## Base URL
+
+```bash
+http://127.0.0.1:3018
+```
+
+## Auth Header
+
+Untuk route yang butuh login:
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+## Response Wrapper
+
+Mayoritas response dibungkus seperti ini.
+
+### Success
+```json
+{
+  "status": 200,
+  "duration": "3.10ms",
+  "data": {}
+}
+```
+
+### Error
+```json
+{
+  "status": 400,
+  "duration": "1.22ms",
+  "data": {
+    "code": "BAD_REQUEST",
+    "message": "Pesan error di sini",
+    "duration": "0.55ms"
+  }
+}
+```
+
+---
+
+# Route List
+
+## Public
+- `GET /health`
+- `GET /health/db`
+- `GET /category`
+- `GET /category/sub`
+- `GET /category/sub/:dynamic`
+- `GET /products/list`
+- `GET /products/:dynamic`
+- `GET /products/flashsale`
+- `GET /payments/available`
+- `POST /payments/prices`
+- `POST /payments/purchase/review`
+- `POST /payments/purchase`
+- `GET /transactions/history/:trxId`
+- `GET /transactions/c/:trxId`
+- `GET /site-config`
+- `GET /static/uploads/:filename`
+- `GET /games/supported`
+- `POST /games/check-id`
+- `POST /callback/payment/duitku`
+- `POST /callback/agregator/digiflazz`
+- `POST /webhook/deploy`
+
+## Auth Required
+- `GET /users/self`
+- `POST /users/auth/logout`
+- `GET /users/auth/logout`
+- `GET /transactions/history`
+- `POST /images/upload`
+- `POST /aws/s3/upload`
+
+## Seller/Admin
+- `POST /products`
+- `PUT /products/:productId`
+- `DELETE /products/:productId`
+- `POST /products/flashsale`
+
+## Admin Only
+- `POST /category`
+- `POST /category/sub/:categoryId`
+- `PUT /category/:categoryId`
+- `DELETE /category/:categoryId`
+- `PUT /category/sub/:subId`
+- `DELETE /category/sub/:subId`
+- `POST /products/approve`
+- `POST /payments`
+- `PUT /payments/:id`
+- `DELETE /payments/:id`
+- `GET /transactions/summary`
+- `PATCH /site-config`
+- `DELETE /site-config/extras/:key`
+
+---
+
+# 1. Health Routes
+
+## GET /health
+Cek status server.
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "ok": true,
+    "service": "backend-by-fennai",
+    "timestamp": "2026-04-08T12:00:00.000Z",
+    "uptimeSeconds": 1234
+  }
+}
+```
+
+## GET /health/db
+Cek koneksi database.
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "ok": true,
+    "database": "reachable",
+    "timestamp": "2026-04-08T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+```json
+{
+  "status": 500,
+  "data": {
+    "ok": false,
+    "database": "unreachable",
+    "timestamp": "2026-04-08T12:00:00.000Z"
+  }
+}
+```
+
+---
+
+# 2. User Routes
+
+## POST /users/auth/register
+Register user baru.
+
+### Body
+```json
+{
+  "email": "user@gmail.com",
+  "displayName": "Aiden User",
+  "password": "12345678",
+  "loginProvider": "email",
+  "role": "buyer"
+}
+```
+
+### Success
+```json
+{
+  "status": 201,
+  "data": {
+    "id": "session-id",
+    "userId": "user-id",
+    "jwtToken": "jwt-token",
+    "lastSeenAt": "2026-04-08T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+```json
+{
+  "status": 409,
+  "data": {
+    "message": "Mohon gunakan email lain yang belum pernah digunakan sebelumnya."
+  }
+}
+```
+
+## POST /users/auth/login
+Login user.
+
+### Body
+```json
+{
+  "email": "bento01@gmail.com",
+  "password": "12345678"
+}
+```
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "id": "session-id",
+    "userId": "user-id",
+    "jwtToken": "jwt-token"
+  }
+}
+```
+
+### Error
+```json
+{
+  "status": 401,
+  "data": {
+    "message": "Email atau password yang Anda masukan salah."
+  }
+}
+```
+
+## POST /users/auth/logout
+Logout session aktif.
+
+### Header
+```http
+Authorization: Bearer <jwt_token>
+```
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Logout successful."
+  }
+}
+```
+
+## GET /users/auth/logout
+Versi GET untuk logout, behavior sama seperti POST.
+
+## GET /users/self
+Ambil data user login.
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "id": "user-id",
+    "email": "bento01@gmail.com",
+    "displayName": "Nama Ku Bento",
+    "role": "admin"
+  }
+}
+```
+
+### Error
+```json
+{
+  "status": 401,
+  "data": {
+    "message": "Unauthorized"
+  }
+}
+```
+
+---
+
+# 3. Category Routes
+
+## GET /category
+Ambil semua category beserta subcategory.
+
+## GET /category/sub
+Ambil semua subcategory.
+
+## GET /category/sub/:dynamic
+Ambil subcategory berdasarkan `categoryId` atau `slug`.
+
+### Query
+- `productInclude=true` untuk ikutkan produk aktif
+
+### Error
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "No sub-categories found for the given parameter."
+  }
+}
+```
+
+## POST /category
+Admin only, buat category baru.
+
+### Body
+```json
+{
+  "title": "Voucher"
+}
+```
+
+## POST /category/sub/:categoryId
+Admin only, buat subcategory baru.
+
+### Body
+```json
+{
+  "title": "Mobile Legends",
+  "thumbnail": "https://example.com/ml.png",
+  "description": "Topup ML",
+  "banners": ["https://example.com/banner.png"],
+  "brand": "Moonton"
+}
+```
+
+## PUT /category/:categoryId
+Admin only, update category.
+
+### Body
+```json
+{
+  "title": "Voucher Game"
+}
+```
+
+## DELETE /category/:categoryId
+Admin only, hapus category dan subcategory terkait.
+
+## PUT /category/sub/:subId
+Admin only, update subcategory.
+
+### Body
+```json
+{
+  "title": "Free Fire",
+  "categoryId": "category-id",
+  "thumbnail": "https://example.com/ff.png",
+  "description": "Topup FF",
+  "banners": ["https://example.com/banner.png"],
+  "brand": "Garena"
+}
+```
+
+## DELETE /category/sub/:subId
+Admin only, hapus subcategory.
+
+---
+
+# 4. Product Routes
+
+## GET /products/list
+List produk.
+
+### Query Optional
+- `q`
+- `id`
+- `category`
+- `sub`
+- `status`
+- `sort=latest|oldest|low_price|high_price`
+- `page`
+- `limit`
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "total": 1,
+    "page": 1,
+    "limit": 20,
+    "items": [
+      {
+        "id": "product-id",
+        "title": "144 Diamond",
+        "slug": "144-diamond",
+        "price": "55000",
+        "status": "PUBLISHED"
+      }
+    ]
+  }
+}
+```
+
+## GET /products/:dynamic
+Detail produk by `id` atau `slug`.
+
+## POST /products
+Seller/Admin only.
+
+### Body
+```json
+{
+  "title": "86 Diamond",
+  "description": "Produk topup",
+  "subCategoryId": "subcategory-id",
+  "price": 20000,
+  "currency": "IDR",
+  "stock": 10,
+  "thumbnails": "https://example.com/image.png",
+  "conditionNotes": "Fast process",
+  "special": true
+}
+```
+
+## PUT /products/:productId
+Update product milik sendiri atau admin.
+
+## DELETE /products/:productId
+Hapus product milik sendiri atau admin.
+
+## POST /products/approve
+Admin only, approve product draft.
+
+### Body
+```json
+{
+  "productId": "product-id"
+}
+```
+
+## POST /products/flashsale
+Seller/Admin only, buat flash sale.
+
+### Body
+```json
+{
+  "productId": "product-id",
+  "discount": 5000,
+  "discType": "flat"
+}
+```
+
+## GET /products/flashsale
+Ambil daftar flash sale aktif.
+
+---
+
+# 5. Payment Routes
+
+## GET /payments/available
+Ambil payment method.
+- buyer/public: hanya yang `active`
+- admin: semua payment method
+
+## POST /payments
+Admin only, buat payment method.
+
+### Body
+```json
+{
+  "methodCode": "QRIS",
+  "paymentName": "QRIS Baru",
+  "source": "DUITKU",
+  "thumbnail": "https://example.com/qris.png",
+  "feeType": "percent",
+  "feeValue": 0.7,
+  "paymentVisibility": "active",
+  "group": "qris"
+}
+```
+
+### Success
+```json
+{
+  "status": 201,
+  "data": {
+    "id": 7,
+    "methodCode": "QRIS",
+    "paymentName": "QRIS Baru"
+  }
+}
+```
+
+## PUT /payments/:id
+Admin only, update payment method.
+
+### Body
+```json
+{
+  "paymentName": "QRIS Updated",
+  "feeValue": 1
+}
+```
+
+## DELETE /payments/:id
+Admin only, hapus payment method.
+
+### Error
+```json
+{
+  "status": 409,
+  "data": {
+    "message": "Payment method is already used by transactions and cannot be deleted."
+  }
+}
+```
+
+## POST /payments/prices
+Hitung harga semua payment method aktif.
+
+### Body
+```json
+{
+  "itemId": "product-id",
+  "qty": 1,
+  "flashId": 1
+}
+```
+
+### Error
+```json
+{
+  "status": 400,
+  "data": {
+    "message": "Produk flash sale hanya dapat dibeli 1 per transaksi"
+  }
+}
+```
+
+## POST /payments/purchase/review
+Preview pembelian.
+
+### Body
+```json
+{
+  "itemId": "product-id",
+  "paymentMethod": 3,
+  "qty": 1,
+  "userData": {
+    "primary_id": "12345678",
+    "server_id": "1234"
+  },
+  "flashId": 1
+}
+```
+
+## POST /payments/purchase
+Buat transaksi pembayaran.
+
+### Body
+```json
+{
+  "itemId": "product-id",
+  "paymentMethod": 3,
+  "qty": 1,
+  "email": "buyer@gmail.com",
+  "phoneNumber": "08123456789",
+  "userData": {
+    "primary_id": "12345678",
+    "server_id": "1234"
+  },
+  "flashId": 1
+}
+```
+
+### Notes
+- `email` wajib
+- `phoneNumber` opsional
+- `qty` maksimal 10
+- kalau flash sale, `qty` harus 1
+
+---
+
+# 6. Transaction Routes
+
+## GET /transactions/history/:trxId
+Ambil detail transaksi by trxId.
+
+## GET /transactions/c/:trxId
+Cek apakah transaksi ada.
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "count": 1
+  }
+}
+```
+
+## GET /transactions/history
+Butuh login.
+- admin bisa lihat semua
+- non-admin cuma lihat transaksi sendiri
+
+### Query Optional
+- `trxId`
+- `paymentStatus`
+- `orderStatus`
+- `userId`
+- `createdAtSort=asc|desc`
+- `search`
+- `page`
+- `limit`
+
+## GET /transactions/summary
+Admin only.
+
+### Query Optional
+- `from`
+- `to`
+
+---
+
+# 7. Site Config Routes
+
+## GET /site-config
+Ambil site config publik, extra secret akan dimasking.
+
+## PATCH /site-config
+Admin only.
+
+### Body
+```json
+{
+  "siteName": "WTPANJAY",
+  "siteUrl": "https://wtpanjay.com",
+  "contactEmail": "admin@wtpanjay.com",
+  "extras": [
+    {
+      "key": "midtrans_server_key",
+      "value": "secret-value",
+      "description": "secret key",
+      "isSecret": true
+    }
+  ]
+}
+```
+
+## DELETE /site-config/extras/:key
+Admin only, hapus extra config tertentu.
+
+---
+
+# 8. Upload Routes
+
+## POST /images/upload
+Upload gambar ke local storage.
+
+### Header
+```http
+Authorization: Bearer <jwt_token>
+Content-Type: multipart/form-data
+```
+
+### Rules
+- mime allowed: `image/png`, `image/jpeg`, `image/webp`
+- max size: `5 MB`
+
+## POST /aws/s3/upload
+Upload gambar ke S3.
+
+### Rules
+- mime allowed: `image/png`, `image/jpeg`, `image/webp`
+- max size: `5 MB`
+
+## GET /static/uploads/:filename
+Ambil file upload lokal.
+
+### Error
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "File not found"
+  }
+}
+```
+
+---
+
+# 9. Game Check Routes
+
+## GET /games/supported
+Ambil daftar game yang didukung.
+
+### Success
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "code": "mobile-legends",
+      "name": "Mobile Legends"
+    }
+  ]
+}
+```
+
+## POST /games/check-id
+Cek user ID game.
+
+### Body
+```json
+{
+  "game": "mobile-legends",
+  "userId": "12345678",
+  "zoneId": "1234"
+}
+```
+
+### Error
+```json
+{
+  "status": 400,
+  "data": {
+    "message": "game is required. Use GET /games/supported to see available games."
+  }
+}
+```
+```
+
+---
+
+# 10. Callback Routes
+
+## POST /callback/payment/duitku
+Callback dari Duitku.
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "OK"
+  }
+}
+```
+
+### Error
+```json
+{
+  "status": 401,
+  "data": {
+    "message": "Invalid signature"
+  }
+}
+```
+
+## POST /callback/agregator/digiflazz
+Callback dari Digiflazz.
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "OK"
+  }
+}
+```
+
+---
+
+# 11. GitHub Webhook Route
+
+## POST /webhook/deploy
+Webhook deploy dari GitHub.
+
+### Required Header
+- `x-hub-signature-256`
+- `x-github-event: push`
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "status": "Deploy triggered",
+    "time": "2026-04-08T12:00:00.000Z",
+    "message": "Deploy triggered for repo: backend-wtp, branch: refs/heads/main, by: username"
+  }
+}
+```
+
+### Error
+```json
+{
+  "status": 401,
+  "data": {
+    "error": "Invalid signature"
+  }
+}
+```
+
+---
+
+# Important Notes
+
+## Payment Rules
+- `email` wajib di `/payments/purchase`
+- `phoneNumber` opsional
+- payment method nonaktif tidak bisa dipakai buyer
+- produk flash sale hanya boleh `qty = 1`
+
+## Upload Rules
+- file type: png, jpg, jpeg, webp
+- max size 5 MB
+
+## Auth Rules
+- role tidak sesuai akan kena `403`
+- token invalid / expired akan gagal auth
+
+## Env yang penting
+Minimal env yang perlu disiapkan:
+- `PORT`
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `MERCH_ID`
+- `API_KEY_DUITKU`
+- `DUITKU_CALLBACK_URL`
+- `DUITKU_RETURN_URL`
+- `DIGIFLAZZ_WEBHOOK_SECRET`
+- `GITHUB_WEBHOOK_SECRET`
+- `GITHUB_ALLOWED_REPO`
+- `GITHUB_ALLOWED_BRANCH`
+- `GITHUB_DEPLOY_COMMAND`
