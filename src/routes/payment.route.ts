@@ -246,7 +246,7 @@ export default async function (fastify: FastInstance) {
         flashSale,
       );
       const discountedPrice = Math.max(basePrice - discount, 0);
-      const fee = computeFee(payment, discountedPrice, qty);
+      const fee = Math.round(computeFee(payment, discountedPrice, qty));
       const normalizedUserData = { ...userData } as Record<string, unknown>;
 
       try {
@@ -353,8 +353,8 @@ export default async function (fastify: FastInstance) {
       const basePrice = Number(product.price);
       const { discount } = computeFlashDiscount(basePrice, flashSale);
       const discountedPrice = Math.max(basePrice - discount, 0);
-      const fee = computeFee(payment, discountedPrice, qty);
-      const totalPrice = discountedPrice * qty + fee;
+      const fee = Math.round(computeFee(payment, discountedPrice, qty));
+      const totalPrice = Math.round(discountedPrice * qty + fee);
 
       const callbackUrl = process.env.DUITKU_CALLBACK_URL;
       const returnUrl = process.env.DUITKU_RETURN_URL;
@@ -380,17 +380,34 @@ export default async function (fastify: FastInstance) {
         }
       } catch {}
 
-      const requestPayment = await duitku.createPayment({
-        amount: totalPrice,
-        itemName: product.title,
-        quantity: qty,
-        merchantOrderId,
-        paymentMethod: payment.methodCode,
-        email,
-        phoneNumber,
-        callbackUrl,
-        returnUrl,
-      });
+      let requestPayment: any;
+      try {
+        requestPayment = await duitku.createPayment({
+          amount: totalPrice,
+          itemName: product.title,
+          quantity: qty,
+          merchantOrderId,
+          paymentMethod: payment.methodCode,
+          email,
+          phoneNumber,
+          callbackUrl,
+          returnUrl,
+        });
+      } catch (error: any) {
+        req.log.error({ error, paymentMethod: payment.methodCode, merchantOrderId }, "Failed to create Duitku payment");
+
+        const message =
+          error?.Message ??
+          error?.message ??
+          error?.data?.message ??
+          error?.responseMessage ??
+          "Gagal membuat pembayaran ke gateway.";
+
+        return reply.status(502).send({
+          message,
+          data: error,
+        });
+      }
 
       const transaction = await fastify.prisma.$transaction(async (tx) => {
         const trx = await tx.transactions.create({
@@ -483,14 +500,14 @@ export default async function (fastify: FastInstance) {
       });
 
       const prices = payments.map((pay) => {
-        const fee = computeFee(pay, discountedPrice, qty);
+        const fee = Math.round(computeFee(pay, discountedPrice, qty));
         return {
           id: pay.id,
           price: basePrice,
           discount,
           discounted_price: discountedPrice,
           fee,
-          total_price: discountedPrice * qty + fee,
+          total_price: Math.round(discountedPrice * qty + fee),
           qty,
         };
       });

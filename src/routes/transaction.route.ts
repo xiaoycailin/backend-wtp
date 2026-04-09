@@ -177,6 +177,20 @@ export default async function (fastify: FastInstance) {
         sumTotalPrice,
         sumDiscount,
         sumFee,
+        sumTotalPricePaymentSuccess,
+        sumFeePaymentSuccess,
+        sumTotalPriceFullySuccess,
+        sumFeeFullySuccess,
+        sumTotalPriceOrderFailed,
+        sumFeeOrderFailed,
+        perPaymentStatus,
+        perOrderStatus,
+        perPaymentMethodAll,
+        perPaymentMethodSuccess,
+        perPaymentMethodFullySuccess,
+        trxWithSubAll,
+        trxWithSubPaymentSuccess,
+        trxWithSubFullySuccess,
       ] = await Promise.all([
         fastify.prisma.transactions.count({ where: baseWhere }),
         fastify.prisma.transactions.count({ where: { ...baseWhere, paymentStatus: "SUCCESS" } }),
@@ -190,9 +204,235 @@ export default async function (fastify: FastInstance) {
         fastify.prisma.transactions.aggregate({ where: baseWhere, _sum: { totalPrice: true } }),
         fastify.prisma.transactions.aggregate({ where: baseWhere, _sum: { discount: true } }),
         fastify.prisma.transactions.aggregate({ where: baseWhere, _sum: { fee: true } }),
+        fastify.prisma.transactions.aggregate({ where: { ...baseWhere, paymentStatus: "SUCCESS" }, _sum: { totalPrice: true } }),
+        fastify.prisma.transactions.aggregate({ where: { ...baseWhere, paymentStatus: "SUCCESS" }, _sum: { fee: true } }),
+        fastify.prisma.transactions.aggregate({ where: { ...baseWhere, paymentStatus: "SUCCESS", orderStatus: "SUCCESS" }, _sum: { totalPrice: true } }),
+        fastify.prisma.transactions.aggregate({ where: { ...baseWhere, paymentStatus: "SUCCESS", orderStatus: "SUCCESS" }, _sum: { fee: true } }),
+        fastify.prisma.transactions.aggregate({ where: { ...baseWhere, orderStatus: "FAILED" }, _sum: { totalPrice: true } }),
+        fastify.prisma.transactions.aggregate({ where: { ...baseWhere, orderStatus: "FAILED" }, _sum: { fee: true } }),
+        fastify.prisma.transactions.groupBy({ by: ["paymentStatus"], where: baseWhere, _count: { _all: true } }),
+        fastify.prisma.transactions.groupBy({ by: ["orderStatus"], where: baseWhere, _count: { _all: true } }),
+        fastify.prisma.transactions.groupBy({ by: ["paymentMethodId"], where: baseWhere, _sum: { totalPrice: true }, _count: { _all: true } }),
+        fastify.prisma.transactions.groupBy({ by: ["paymentMethodId"], where: { ...baseWhere, paymentStatus: "SUCCESS" }, _sum: { totalPrice: true }, _count: { _all: true } }),
+        fastify.prisma.transactions.groupBy({ by: ["paymentMethodId"], where: { ...baseWhere, paymentStatus: "SUCCESS", orderStatus: "SUCCESS" }, _sum: { totalPrice: true }, _count: { _all: true } }),
+        fastify.prisma.transactions.findMany({
+          where: baseWhere,
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                subCategoryId: true,
+                subCategory: {
+                  select: {
+                    id: true,
+                    title: true,
+                    categoryId: true,
+                    category: {
+                      select: {
+                        id: true,
+                        title: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        fastify.prisma.transactions.findMany({
+          where: { ...baseWhere, paymentStatus: "SUCCESS" },
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                subCategoryId: true,
+                subCategory: {
+                  select: {
+                    id: true,
+                    title: true,
+                    categoryId: true,
+                    category: {
+                      select: {
+                        id: true,
+                        title: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        fastify.prisma.transactions.findMany({
+          where: { ...baseWhere, paymentStatus: "SUCCESS", orderStatus: "SUCCESS" },
+          include: {
+            product: {
+              select: {
+                id: true,
+                title: true,
+                subCategoryId: true,
+                subCategory: {
+                  select: {
+                    id: true,
+                    title: true,
+                    categoryId: true,
+                    category: {
+                      select: {
+                        id: true,
+                        title: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
       ]);
 
-      return reply.send({
+      const pmIds = Array.from(
+        new Set(
+          [
+            ...perPaymentMethodAll,
+            ...perPaymentMethodSuccess,
+            ...perPaymentMethodFullySuccess,
+          ]
+            .map((p) => p.paymentMethodId)
+            .filter((id) => id !== null),
+        ),
+      ) as number[];
+
+      const paymentMethods =
+        pmIds.length > 0
+          ? await fastify.prisma.paymentMethod.findMany({
+              where: { id: { in: pmIds } },
+              select: {
+                id: true,
+                paymentName: true,
+                methodCode: true,
+                group: true,
+                thumbnail: true,
+              },
+            })
+          : [];
+
+      const mapPMAll = new Map<number, { count: number; sum: number }>();
+      perPaymentMethodAll.forEach((row) => {
+        if (row.paymentMethodId == null) return;
+        mapPMAll.set(row.paymentMethodId, {
+          count: row._count._all,
+          sum: toNumber(row._sum.totalPrice),
+        });
+      });
+
+      const mapPMSuccess = new Map<number, { count: number; sum: number }>();
+      perPaymentMethodSuccess.forEach((row) => {
+        if (row.paymentMethodId == null) return;
+        mapPMSuccess.set(row.paymentMethodId, {
+          count: row._count._all,
+          sum: toNumber(row._sum.totalPrice),
+        });
+      });
+
+      const mapPMFully = new Map<number, { count: number; sum: number }>();
+      perPaymentMethodFullySuccess.forEach((row) => {
+        if (row.paymentMethodId == null) return;
+        mapPMFully.set(row.paymentMethodId, {
+          count: row._count._all,
+          sum: toNumber(row._sum.totalPrice),
+        });
+      });
+
+      const perPaymentMethod = pmIds.map((id) => {
+        const pm = paymentMethods.find((p) => p.id === id);
+        const all = mapPMAll.get(id) ?? { count: 0, sum: 0 };
+        const suc = mapPMSuccess.get(id) ?? { count: 0, sum: 0 };
+        const full = mapPMFully.get(id) ?? { count: 0, sum: 0 };
+
+        return {
+          paymentMethodId: id,
+          paymentName: pm?.paymentName ?? "Unknown",
+          methodCode: pm?.methodCode ?? null,
+          group: pm?.group ?? null,
+          thumbnail: pm?.thumbnail ?? null,
+          countAll: all.count,
+          sumAll: all.sum,
+          countPaymentSuccess: suc.count,
+          sumPaymentSuccess: suc.sum,
+          countFullySuccess: full.count,
+          sumFullySuccess: full.sum,
+        };
+      });
+
+      type TrxRow = (typeof trxWithSubAll)[number];
+      type SubAgg = {
+        subCategoryId: string;
+        subCategoryTitle: string;
+        categoryId: string | null;
+        categoryTitle: string | null;
+        totalTransactionsAll: number;
+        totalQtyAll: number;
+        sumAll: number;
+        totalTransactionsPaymentSuccess: number;
+        sumPaymentSuccess: number;
+        totalTransactionsFullySuccess: number;
+        sumFullySuccess: number;
+      };
+
+      function aggregateSubCategory(
+        target: Map<string, SubAgg>,
+        list: TrxRow[],
+        kind: "all" | "paySuccess" | "fully",
+      ) {
+        for (const t of list) {
+          if (!t.product || !t.product.subCategory) continue;
+          const sub = t.product.subCategory;
+          const key = sub.id;
+
+          if (!target.has(key)) {
+            target.set(key, {
+              subCategoryId: sub.id,
+              subCategoryTitle: sub.title,
+              categoryId: sub.category?.id ?? null,
+              categoryTitle: sub.category?.title ?? null,
+              totalTransactionsAll: 0,
+              totalQtyAll: 0,
+              sumAll: 0,
+              totalTransactionsPaymentSuccess: 0,
+              sumPaymentSuccess: 0,
+              totalTransactionsFullySuccess: 0,
+              sumFullySuccess: 0,
+            });
+          }
+
+          const agg = target.get(key)!;
+
+          if (kind === "all") {
+            agg.totalTransactionsAll += 1;
+            agg.totalQtyAll += t.quantity ?? 0;
+            agg.sumAll += toNumber(t.totalPrice);
+          } else if (kind === "paySuccess") {
+            agg.totalTransactionsPaymentSuccess += 1;
+            agg.sumPaymentSuccess += toNumber(t.totalPrice);
+          } else {
+            agg.totalTransactionsFullySuccess += 1;
+            agg.sumFullySuccess += toNumber(t.totalPrice);
+          }
+        }
+      }
+
+      const subMap = new Map<string, SubAgg>();
+      aggregateSubCategory(subMap, trxWithSubAll as any, "all");
+      aggregateSubCategory(subMap, trxWithSubPaymentSuccess as any, "paySuccess");
+      aggregateSubCategory(subMap, trxWithSubFullySuccess as any, "fully");
+
+      const perSubCategory = Array.from(subMap.values()).sort(
+        (a, b) => b.sumAll - a.sumAll,
+      );
+
+      return reply.send(serializeData({
         totalCount,
         totalPaymentSuccessCount,
         totalPaymentFailedCount,
@@ -203,9 +443,31 @@ export default async function (fastify: FastInstance) {
         totalOrderWaitPaymentCount,
         sumPrice: toNumber(sumPrice._sum.price),
         sumTotalPrice: toNumber(sumTotalPrice._sum.totalPrice),
-        sumDiscount: sumDiscount._sum.discount ?? 0,
-        sumFee: sumFee._sum.fee ?? 0,
-      });
+        sumDiscount: toNumber(sumDiscount._sum.discount),
+        sumFee: toNumber(sumFee._sum.fee),
+        grossFromPaymentSuccess: toNumber(sumTotalPricePaymentSuccess._sum.totalPrice),
+        netFromPaymentSuccess:
+          toNumber(sumTotalPricePaymentSuccess._sum.totalPrice) -
+          toNumber(sumFeePaymentSuccess._sum.fee),
+        grossFullySuccess: toNumber(sumTotalPriceFullySuccess._sum.totalPrice),
+        netFullySuccess:
+          toNumber(sumTotalPriceFullySuccess._sum.totalPrice) -
+          toNumber(sumFeeFullySuccess._sum.fee),
+        grossOrderFailed: toNumber(sumTotalPriceOrderFailed._sum.totalPrice),
+        netOrderFailed:
+          toNumber(sumTotalPriceOrderFailed._sum.totalPrice) -
+          toNumber(sumFeeOrderFailed._sum.fee),
+        perPaymentStatus: perPaymentStatus.map((row) => ({
+          paymentStatus: row.paymentStatus,
+          count: row._count._all,
+        })),
+        perOrderStatus: perOrderStatus.map((row) => ({
+          orderStatus: row.orderStatus,
+          count: row._count._all,
+        })),
+        perPaymentMethod,
+        perSubCategory,
+      }));
     },
   });
 }
