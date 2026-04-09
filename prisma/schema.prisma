@@ -265,6 +265,43 @@ model ActivityLog {
   @@index([actorUserId], name: "idx_activitylog_actoruserid")
 }
 
+model SystemLog {
+  id              String   @id @default(uuid())
+  type            String
+  source          String
+  message         String   @db.LongText
+  statusCode      Int?
+  method          String?
+  url             String?
+  trxId           String?
+  provider        String?
+  requestPayload  Json?
+  responsePayload Json?
+  errorStack      String?  @db.LongText
+  metadata        Json?
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt], name: "idx_systemlog_createdat")
+  @@index([type], name: "idx_systemlog_type")
+  @@index([source], name: "idx_systemlog_source")
+  @@index([trxId], name: "idx_systemlog_trxid")
+  @@index([provider], name: "idx_systemlog_provider")
+}
+
+model MediaAsset {
+  id        String   @id @default(uuid())
+  url       String   @unique @db.VarChar(500)
+  filename  String   @db.VarChar(255)
+  mimeType  String?  @db.VarChar(100)
+  size      Int?
+  provider  String?  @db.VarChar(50)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt], name: "idx_mediaasset_createdat")
+  @@index([provider], name: "idx_mediaasset_provider")
+}
+
 model SiteConfig {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())

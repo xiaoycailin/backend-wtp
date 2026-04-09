@@ -6,6 +6,7 @@ import { pipeline } from "stream/promises";
 import mime from "mime-types";
 import { uploadImage } from "../utils/uploadImage";
 import { authMiddleware } from "../plugins/authMiddleware";
+import { serializeData } from "../utils/json";
 
 const UPLOAD_DIR = join(process.cwd(), "static/uploads");
 const ALLOWED_MIME = ["image/png", "image/jpeg", "image/webp"];
@@ -26,6 +27,21 @@ function assertAllowedMime(mimetype: string) {
 }
 
 export default async function (fastify: FastInstance) {
+  fastify.get("/images", {
+    preHandler: authMiddleware,
+    handler: async (_req, reply) => {
+      const items = await (fastify.prisma as any).mediaAsset.findMany({
+        orderBy: { createdAt: "desc" },
+      });
+
+      return reply.send(
+        serializeData({
+          items,
+        }),
+      );
+    },
+  });
+
   fastify.post("/images/upload", {
     preHandler: authMiddleware,
     handler: async (req, reply) => {
@@ -49,10 +65,21 @@ export default async function (fastify: FastInstance) {
         return reply.status(400).send({ message: "File too large" });
       }
 
+      const url = `/static/uploads/${filename}`;
+      await (fastify.prisma as any).mediaAsset.create({
+        data: {
+          url,
+          filename,
+          mimeType: file.mimetype,
+          size: stats.size,
+          provider: "local",
+        },
+      });
+
       return reply.status(201).send({
         message: "Uploaded successfully",
         filename,
-        url: `/static/uploads/${filename}`,
+        url,
         size: stats.size,
       });
     },
@@ -75,11 +102,22 @@ export default async function (fastify: FastInstance) {
         return reply.status(400).send({ message: "File too large" });
       }
 
+      const sanitizedFilename = sanitizeFilename(file.filename);
       const url = await uploadImage(
         buffer,
-        sanitizeFilename(file.filename),
+        sanitizedFilename,
         file.mimetype,
       );
+
+      await (fastify.prisma as any).mediaAsset.create({
+        data: {
+          url,
+          filename: sanitizedFilename,
+          mimeType: file.mimetype,
+          size: buffer.length,
+          provider: "r2",
+        },
+      });
 
       return reply.status(201).send({
         message: "Uploaded successfully",
