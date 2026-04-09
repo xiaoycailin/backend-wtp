@@ -5,7 +5,7 @@ import {
   optionalAuthMiddleware,
 } from "../plugins/authMiddleware";
 import { convertBigIntAndDate } from "./products.route";
-import { checkGameId } from "utils/gameIdChecker";
+import { checkGameId } from "../utils/gameIdChecker";
 import { ensureAdmin } from "../utils/auth";
 import {
   paymentMethodCreateSchema,

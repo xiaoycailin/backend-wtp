@@ -23,6 +23,12 @@ export function cacheMiddleware(
   ttlSeconds: number = 300
 ) {
   return (req: FastifyRequest, reply: FastifyReply, done: HookHandlerDoneFunction) => {
+    // Safety check: cache might not be ready
+    if (!fastify.cache) {
+      fastify.log.warn("Cache not available, skipping");
+      done();
+      return;
+    }
     // Only cache GET requests
     if (req.method !== "GET") {
       done();

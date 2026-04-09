@@ -46,8 +46,8 @@ const buildServer = async () => {
     prefix: "/static/",
   });
 
-  app.register(prismaPlugin);
-  app.register(cachePlugin);
+  await app.register(prismaPlugin);
+  await app.register(cachePlugin);
 
   app.get("/health", async () => {
     return {
@@ -77,18 +77,18 @@ const buildServer = async () => {
   });
 
   // Routes
-  app.register(userRoutes);
-  app.register(categoryRoute);
-  app.register(productRoutes);
-  app.register(uploadImageRoute);
-  app.register(paymentRoute);
-  app.register(transactionRoute);
-  app.register(callbackRoute);
-  app.register(gameCheckRoute);
-  app.register(siteconfigRoute);
-  app.register(activityRoute);
-  app.register(systemLogRoute);
-  app.register(githubWebhookRoute);
+  await app.register(userRoutes);
+  await app.register(categoryRoute);
+  await app.register(productRoutes);
+  await app.register(uploadImageRoute);
+  await app.register(paymentRoute);
+  await app.register(transactionRoute);
+  await app.register(callbackRoute);
+  await app.register(gameCheckRoute);
+  await app.register(siteconfigRoute);
+  await app.register(activityRoute);
+  await app.register(systemLogRoute);
+  await app.register(githubWebhookRoute);
 
   return app;
 };

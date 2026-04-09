@@ -2,7 +2,7 @@ import fastifyFormbody from "@fastify/formbody";
 import { FastInstance } from "../utils/fastify";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
-import DigiflazzClient from "plugins/digiflazz-api";
+import DigiflazzClient from "../plugins/digiflazz-api";
 import { createSystemLog } from "../utils/system-log";
 
 // ─── Duitku ──────────────────────────────────────────────────────────────────

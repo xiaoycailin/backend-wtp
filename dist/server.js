@@ -45,8 +45,8 @@ const buildServer = async () => {
         root: (0, path_1.join)(process.cwd(), "static"),
         prefix: "/static/",
     });
-    app.register(prisma_1.default);
-    app.register(cache_1.default);
+    await app.register(prisma_1.default);
+    await app.register(cache_1.default);
     app.get("/health", async () => {
         return {
             ok: true,
@@ -74,18 +74,18 @@ const buildServer = async () => {
         }
     });
     // Routes
-    app.register(user_route_1.default);
-    app.register(category_route_1.default);
-    app.register(products_route_1.default);
-    app.register(upload_image_route_1.default);
-    app.register(payment_route_1.default);
-    app.register(transaction_route_1.default);
-    app.register(callback_route_1.default);
-    app.register(game_check_route_1.default);
-    app.register(siteconfig_route_1.default);
-    app.register(activity_route_1.default);
-    app.register(system_log_route_1.default);
-    app.register(github_webhook_route_1.default);
+    await app.register(user_route_1.default);
+    await app.register(category_route_1.default);
+    await app.register(products_route_1.default);
+    await app.register(upload_image_route_1.default);
+    await app.register(payment_route_1.default);
+    await app.register(transaction_route_1.default);
+    await app.register(callback_route_1.default);
+    await app.register(game_check_route_1.default);
+    await app.register(siteconfig_route_1.default);
+    await app.register(activity_route_1.default);
+    await app.register(system_log_route_1.default);
+    await app.register(github_webhook_route_1.default);
     return app;
 };
 exports.default = buildServer;
