@@ -2,6 +2,8 @@ import { FastInstance } from "../utils/fastify";
 import { z } from "zod";
 import { authMiddleware } from "../plugins/authMiddleware";
 import { ensureAdmin } from "../utils/auth";
+import { cacheMiddleware, invalidateCache } from "../utils/cache-utils";
+import type { FastifyRequest, FastifyReply } from "fastify";
 
 const UpdateSiteConfigSchema = z.object({
   siteName: z.string().max(100).optional(),
@@ -82,7 +84,8 @@ function forbidNonAdmin(req: any, reply: any) {
 
 export default async function (fastify: FastInstance) {
   fastify.get("/site-config", {
-    handler: async (_req, reply) => {
+    preHandler: cacheMiddleware(fastify, 300),
+    handler: async (_req: FastifyRequest, reply: FastifyReply) => {
       const config = await fastify.prisma.siteConfig.findFirst({
         where: { id: 1 },
       });
@@ -162,6 +165,8 @@ export default async function (fastify: FastInstance) {
           });
         }
       }
+
+      invalidateCache(fastify, "/site-config");
 
       return reply.send({
         message: "Site config berhasil diperbarui.",

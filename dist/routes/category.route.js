@@ -4,6 +4,7 @@ exports.default = default_1;
 const authMiddleware_1 = require("../plugins/authMiddleware");
 const fastify_1 = require("../utils/fastify");
 const products_route_1 = require("./products.route");
+const cache_utils_1 = require("../utils/cache-utils");
 async function default_1(fastify) {
     const ensureAdmin = (user, reply) => {
         if (!user || user.role !== "admin") {
@@ -24,6 +25,7 @@ async function default_1(fastify) {
         return true;
     };
     fastify.get("/category", {
+        preHandler: (0, cache_utils_1.cacheMiddleware)(fastify, 600),
         handler: async (_req, reply) => {
             const categories = await fastify.prisma.category.findMany({
                 include: {
@@ -34,6 +36,7 @@ async function default_1(fastify) {
         },
     });
     fastify.get("/category/sub", {
+        preHandler: (0, cache_utils_1.cacheMiddleware)(fastify, 600),
         handler: async (_req, reply) => {
             const subCategories = await fastify.prisma.subCategory.findMany({
                 include: {

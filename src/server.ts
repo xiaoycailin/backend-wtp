@@ -17,6 +17,7 @@ import siteconfigRoute from "./routes/siteconfig.route";
 import githubWebhookRoute from "./routes/github-webhook.route";
 import activityRoute from "./routes/activity.route";
 import systemLogRoute from "./routes/system-log.route";
+import cachePlugin from "./plugins/cache";
 
 const buildServer = async () => {
   const app = Fastify({
@@ -46,6 +47,7 @@ const buildServer = async () => {
   });
 
   app.register(prismaPlugin);
+  app.register(cachePlugin);
 
   app.get("/health", async () => {
     return {

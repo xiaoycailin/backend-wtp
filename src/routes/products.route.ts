@@ -4,6 +4,7 @@ import {
 } from "../plugins/authMiddleware";
 import { FastInstance, slugify } from "../utils/fastify";
 import { createActivityLog } from "../utils/activity-log";
+import { cacheMiddleware } from "../utils/cache-utils";
 
 /**
  * Helper: serialise BigInt and Date values that Prisma returns into

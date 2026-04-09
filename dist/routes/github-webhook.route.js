@@ -7,6 +7,7 @@ exports.default = githubWebhook;
 const child_process_1 = require("child_process");
 const crypto_1 = __importDefault(require("crypto"));
 const logger_1 = require("../utils/logger");
+const system_log_1 = require("../utils/system-log");
 const ALLOWED_REPO = process.env.GITHUB_ALLOWED_REPO || "aiden2209-dev/marketplaceservice";
 const ALLOWED_BRANCH = process.env.GITHUB_ALLOWED_BRANCH || "refs/heads/main";
 const DEPLOY_COMMAND = process.env.GITHUB_DEPLOY_COMMAND;
@@ -65,6 +66,22 @@ async function githubWebhook(fastify) {
         }
         catch (err) {
             logger_1.logger.error({ err }, "Webhook processing error");
+            await (0, system_log_1.createSystemLog)(fastify, {
+                type: "app_error",
+                source: "github_webhook.deploy",
+                message: err?.message ?? "Webhook processing error",
+                statusCode: err?.statusCode ?? 500,
+                method: req.method,
+                url: req.url,
+                requestPayload: {
+                    headers: {
+                        "x-github-event": req.headers["x-github-event"],
+                        "x-hub-signature-256": req.headers["x-hub-signature-256"] ? "[redacted]" : null,
+                    },
+                    body: req.body,
+                },
+                errorStack: err?.stack ?? null,
+            });
             return reply.status(500).send({ error: "Internal server error" });
         }
     });

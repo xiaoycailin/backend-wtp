@@ -1,5 +1,27 @@
 import crypto from "crypto";
 
+export class ThirdPartyHttpError extends Error {
+  statusCode: number;
+  provider: string;
+  responsePayload?: unknown;
+  requestPayload?: unknown;
+
+  constructor(input: {
+    message: string;
+    statusCode: number;
+    provider: string;
+    responsePayload?: unknown;
+    requestPayload?: unknown;
+  }) {
+    super(input.message);
+    this.name = "ThirdPartyHttpError";
+    this.statusCode = input.statusCode;
+    this.provider = input.provider;
+    this.responsePayload = input.responsePayload;
+    this.requestPayload = input.requestPayload;
+  }
+}
+
 export type PaymentDetails = {
   email?: string;
   phoneNumber?: string;
@@ -88,13 +110,25 @@ export class DuitKu {
       },
     );
 
-    if (response.ok) {
-      const result = await response.json();
-      return result;
-    } else {
-      const error = await response.json();
-      throw error;
+    const raw = await response.text();
+    let parsed: unknown = raw;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = raw;
     }
+
+    if (response.ok) {
+      return parsed;
+    }
+
+    throw new ThirdPartyHttpError({
+      message: "Duitku create payment request failed",
+      statusCode: response.status,
+      provider: "duitku",
+      responsePayload: parsed,
+      requestPayload: params,
+    });
   }
   async paymentMethod(env?: "sandbox" | "production") {
     const merchantcode = process.env.MERCH_ID || "";
@@ -129,13 +163,24 @@ export class DuitKu {
       },
     );
 
-    if (response.ok) {
-      const result = await response.json();
-
-      return result;
-    } else {
-      const error = await response.json();
-      throw error;
+    const raw = await response.text();
+    let parsed: unknown = raw;
+    try {
+      parsed = raw ? JSON.parse(raw) : null;
+    } catch {
+      parsed = raw;
     }
+
+    if (response.ok) {
+      return parsed;
+    }
+
+    throw new ThirdPartyHttpError({
+      message: "Duitku payment method request failed",
+      statusCode: response.status,
+      provider: "duitku",
+      responsePayload: parsed,
+      requestPayload: params,
+    });
   }
 }

@@ -1,6 +1,8 @@
 import { authMiddleware } from "../plugins/authMiddleware";
 import { FastInstance, slugify } from "../utils/fastify";
 import { convertBigIntAndDate } from "./products.route";
+import { cacheMiddleware } from "../utils/cache-utils";
+import type { FastifyRequest, FastifyReply } from "fastify";
 
 export default async function (fastify: FastInstance) {
   const ensureAdmin = (user: any, reply: any): boolean => {
@@ -24,7 +26,8 @@ export default async function (fastify: FastInstance) {
   };
 
   fastify.get("/category", {
-    handler: async (_req, reply) => {
+    preHandler: cacheMiddleware(fastify, 600),
+    handler: async (_req: FastifyRequest, reply: FastifyReply) => {
       const categories = await fastify.prisma.category.findMany({
         include: {
           subCategories: true,
@@ -36,7 +39,8 @@ export default async function (fastify: FastInstance) {
   });
 
   fastify.get("/category/sub", {
-    handler: async (_req, reply) => {
+    preHandler: cacheMiddleware(fastify, 600),
+    handler: async (_req: FastifyRequest, reply: FastifyReply) => {
       const subCategories = await fastify.prisma.subCategory.findMany({
         include: {
           category: true,
