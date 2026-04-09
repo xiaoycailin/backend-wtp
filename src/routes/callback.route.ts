@@ -341,7 +341,17 @@ export default async function (fastify: FastInstance) {
         await fastify.prisma.$transaction(async (tx) => {
           // Cari transaksi berdasarkan ref_id (trxId di DB kita)
           const transaction = await tx.transactions.findFirst({
-            where: { trxId: trxData.ref_id },
+            where: {
+              OR: [
+                { trxId: trxData.ref_id },
+                {
+                  providerData: {
+                    path: "$.retryRefId",
+                    equals: trxData.ref_id,
+                  },
+                },
+              ],
+            },
           });
 
           if (!transaction) {
@@ -365,6 +375,16 @@ export default async function (fastify: FastInstance) {
           }
 
           // 4. Update status berdasarkan response Digiflazz
+          const currentProviderData =
+            typeof transaction.providerData === "object" && transaction.providerData !== null
+              ? (transaction.providerData as Record<string, any>)
+              : {};
+          const retryHistory = Array.isArray(currentProviderData.retryHistory)
+            ? [...currentProviderData.retryHistory]
+            : [];
+          const retryIndex = retryHistory.findIndex((item: any) => item?.refId === trxData.ref_id);
+          const baseRetryEntry = retryIndex >= 0 ? retryHistory[retryIndex] : null;
+
           if (trxData.status === "Sukses") {
             await tx.transactions.update({
               where: { id: transaction.id },
@@ -373,11 +393,30 @@ export default async function (fastify: FastInstance) {
                 serialNumber: trxData.sn,
 
                 providerData: {
+                  ...currentProviderData,
+                  lastRefId: trxData.ref_id,
                   sn: trxData.sn ?? null,
                   rc: trxData.rc,
                   message: trxData.message,
                   price: trxData.price ?? null,
                   buyer_last_saldo: trxData.buyer_last_saldo ?? null,
+                  retryHistory:
+                    retryIndex >= 0
+                      ? retryHistory.map((item: any, index: number) =>
+                          index === retryIndex
+                            ? {
+                                ...baseRetryEntry,
+                                callbackStatus: trxData.status,
+                                callbackMessage: trxData.message,
+                                callbackAt: new Date().toISOString(),
+                                rc: trxData.rc,
+                                sn: trxData.sn ?? null,
+                                price: trxData.price ?? null,
+                                buyer_last_saldo: trxData.buyer_last_saldo ?? null,
+                              }
+                            : item,
+                        )
+                      : retryHistory,
                 },
               },
             });
@@ -392,8 +431,24 @@ export default async function (fastify: FastInstance) {
               data: {
                 orderStatus: "FAILED",
                 providerData: {
+                  ...currentProviderData,
+                  lastRefId: trxData.ref_id,
                   rc: trxData.rc,
                   message: trxData.message,
+                  retryHistory:
+                    retryIndex >= 0
+                      ? retryHistory.map((item: any, index: number) =>
+                          index === retryIndex
+                            ? {
+                                ...baseRetryEntry,
+                                callbackStatus: trxData.status,
+                                callbackMessage: trxData.message,
+                                callbackAt: new Date().toISOString(),
+                                rc: trxData.rc,
+                              }
+                            : item,
+                        )
+                      : retryHistory,
                 },
               },
             });
