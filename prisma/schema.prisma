@@ -246,6 +246,25 @@ model PaymentMethod {
   transactions      Transactions[]
 }
 
+model ActivityLog {
+  id          String   @id @default(uuid())
+  actorUserId String?
+  actorName   String?
+  actorRole   String?
+  action      String
+  entityType  String
+  entityId    String?
+  entityLabel String?
+  description String?  @db.LongText
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt], name: "idx_activitylog_createdat")
+  @@index([action], name: "idx_activitylog_action")
+  @@index([entityType], name: "idx_activitylog_entitytype")
+  @@index([actorUserId], name: "idx_activitylog_actoruserid")
+}
+
 model SiteConfig {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())

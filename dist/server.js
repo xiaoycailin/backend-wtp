@@ -19,6 +19,7 @@ const transaction_route_1 = __importDefault(require("./routes/transaction.route"
 const game_check_route_1 = __importDefault(require("./routes/game-check.route"));
 const siteconfig_route_1 = __importDefault(require("./routes/siteconfig.route"));
 const github_webhook_route_1 = __importDefault(require("./routes/github-webhook.route"));
+const activity_route_1 = __importDefault(require("./routes/activity.route"));
 const buildServer = async () => {
     const app = (0, fastify_1.default)({
         logger: {
@@ -79,6 +80,7 @@ const buildServer = async () => {
     app.register(callback_route_1.default);
     app.register(game_check_route_1.default);
     app.register(siteconfig_route_1.default);
+    app.register(activity_route_1.default);
     app.register(github_webhook_route_1.default);
     return app;
 };

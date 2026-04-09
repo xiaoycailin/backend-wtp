@@ -3,6 +3,7 @@ import {
   optionalAuthMiddleware,
 } from "../plugins/authMiddleware";
 import { FastInstance, slugify } from "../utils/fastify";
+import { createActivityLog } from "../utils/activity-log";
 
 /**
  * Helper: serialise BigInt and Date values that Prisma returns into
@@ -202,24 +203,68 @@ export default async function productRoutes(fastify: FastInstance) {
       if (!user) return;
       if (!ensureSellerOrAdmin(user, reply)) return;
 
-      const { productId, discount, discType } = req.body as any;
+      const { productId, discount, discType, stock } = req.body as any;
 
       if (!productId) {
         return reply.status(400).send({ message: "productId is required." });
       }
 
+      const normalizedDiscount = Number(discount ?? 0);
+      const normalizedStock = Number(stock ?? 10);
+      const normalizedDiscType = discType === "percent" ? "percent" : "flat";
+
+      if (Number.isNaN(normalizedDiscount) || normalizedDiscount <= 0) {
+        return reply.status(400).send({ message: "discount harus lebih dari 0." });
+      }
+
+      if (normalizedDiscType === "percent" && normalizedDiscount > 100) {
+        return reply.status(400).send({ message: "discount percent maksimal 100." });
+      }
+
+      if (Number.isNaN(normalizedStock) || normalizedStock < 0) {
+        return reply.status(400).send({ message: "stock tidak valid." });
+      }
+
+      const product = await fastify.prisma.products.findUnique({
+        where: { id: productId },
+      });
+
+      if (!product) {
+        return reply.status(404).send({ message: "Produk tidak ditemukan." });
+      }
+
       const newFlashSale = await fastify.prisma.flashSale.create({
         data: {
           productId,
-          stock: 10,
-          discount,
-          discType,
+          stock: normalizedStock,
+          discount: normalizedDiscount,
+          discType: normalizedDiscType,
+        },
+        include: {
+          products: true,
+        },
+      });
+
+      await createActivityLog(fastify, {
+        actorUserId: user.id,
+        actorName: user.displayName ?? user.email ?? null,
+        actorRole: user.role ?? null,
+        action: "flashsale.create",
+        entityType: "flash_sale",
+        entityId: String(newFlashSale.id),
+        entityLabel: newFlashSale.products?.title ?? null,
+        description: `Membuat flash sale untuk ${newFlashSale.products?.title ?? "produk"}`,
+        metadata: {
+          productId,
+          discount: normalizedDiscount,
+          discType: normalizedDiscType,
+          stock: normalizedStock,
         },
       });
 
       return reply.status(201).send({
         message: "Product flash sale successfully created.",
-        ...convertBigIntAndDate(newFlashSale),
+        data: convertBigIntAndDate(newFlashSale),
       });
     },
   });
@@ -228,25 +273,153 @@ export default async function productRoutes(fastify: FastInstance) {
   // LIST FLASH SALES
   // ===========================
   fastify.get("/products/flashsale", {
+    preHandler: authMiddleware,
     handler: async (_req, reply) => {
       const flashsale = await fastify.prisma.flashSale.findMany({
-        where: {
+        orderBy: { createdAt: "desc" },
+        include: {
           products: {
-            status: {
-              in: ["PUBLISHED", "AVAILABLE", "SOLD"],
+            include: {
+              subCategory: true,
             },
           },
         },
+      });
+
+      return reply.status(200).send({
+        data: flashsale.map(convertBigIntAndDate),
+      });
+    },
+  });
+
+  fastify.put("/products/flashsale/:id", {
+    preHandler: authMiddleware,
+    handler: async (req, reply) => {
+      const user = req.user;
+      if (!user) return;
+      if (!ensureSellerOrAdmin(user, reply)) return;
+
+      const { id } = req.params as { id: string };
+      const { discount, discType, stock } = req.body as any;
+      const flashSaleId = Number(id);
+
+      if (!Number.isInteger(flashSaleId) || flashSaleId <= 0) {
+        return reply.status(400).send({ message: "flash sale id tidak valid." });
+      }
+
+      const existing = await fastify.prisma.flashSale.findUnique({
+        where: { id: flashSaleId },
+      });
+
+      if (!existing) {
+        return reply.status(404).send({ message: "Flash sale tidak ditemukan." });
+      }
+
+      const data: Record<string, unknown> = {};
+
+      if (discount !== undefined) {
+        const normalizedDiscount = Number(discount);
+        if (Number.isNaN(normalizedDiscount) || normalizedDiscount <= 0) {
+          return reply.status(400).send({ message: "discount harus lebih dari 0." });
+        }
+        if ((discType ?? existing.discType) === "percent" && normalizedDiscount > 100) {
+          return reply.status(400).send({ message: "discount percent maksimal 100." });
+        }
+        data.discount = normalizedDiscount;
+      }
+
+      if (discType !== undefined) {
+        if (!["flat", "percent"].includes(discType)) {
+          return reply.status(400).send({ message: "discType tidak valid." });
+        }
+        data.discType = discType;
+      }
+
+      if (stock !== undefined) {
+        const normalizedStock = Number(stock);
+        if (Number.isNaN(normalizedStock) || normalizedStock < 0) {
+          return reply.status(400).send({ message: "stock tidak valid." });
+        }
+        data.stock = normalizedStock;
+      }
+
+      const updated = await fastify.prisma.flashSale.update({
+        where: { id: flashSaleId },
+        data,
         include: {
-          products: true,
+          products: {
+            include: {
+              subCategory: true,
+            },
+          },
         },
       });
 
-      /**
-       * BUG-FIX: Changed status from 201 to 200. GET requests that return
-       * data should use 200, not 201 (Created).
-       */
-      return reply.status(200).send(flashsale.map(convertBigIntAndDate));
+      await createActivityLog(fastify, {
+        actorUserId: user.id,
+        actorName: user.displayName ?? user.email ?? null,
+        actorRole: user.role ?? null,
+        action: "flashsale.update",
+        entityType: "flash_sale",
+        entityId: String(updated.id),
+        entityLabel: updated.products?.title ?? null,
+        description: `Mengubah flash sale ${updated.products?.title ?? "produk"}`,
+        metadata: data,
+      });
+
+      return reply.send({
+        message: "Flash sale berhasil diupdate.",
+        data: convertBigIntAndDate(updated),
+      });
+    },
+  });
+
+  fastify.delete("/products/flashsale/:id", {
+    preHandler: authMiddleware,
+    handler: async (req, reply) => {
+      const user = req.user;
+      if (!user) return;
+      if (!ensureSellerOrAdmin(user, reply)) return;
+
+      const { id } = req.params as { id: string };
+      const flashSaleId = Number(id);
+
+      if (!Number.isInteger(flashSaleId) || flashSaleId <= 0) {
+        return reply.status(400).send({ message: "flash sale id tidak valid." });
+      }
+
+      const existing = await fastify.prisma.flashSale.findUnique({
+        where: { id: flashSaleId },
+      });
+
+      if (!existing) {
+        return reply.status(404).send({ message: "Flash sale tidak ditemukan." });
+      }
+
+      await fastify.prisma.flashSale.delete({
+        where: { id: flashSaleId },
+      });
+
+      await createActivityLog(fastify, {
+        actorUserId: user.id,
+        actorName: user.displayName ?? user.email ?? null,
+        actorRole: user.role ?? null,
+        action: "flashsale.delete",
+        entityType: "flash_sale",
+        entityId: String(existing.id),
+        entityLabel: existing.productId ?? null,
+        description: "Menghapus flash sale",
+        metadata: {
+          productId: existing.productId,
+          discount: existing.discount,
+          discType: existing.discType,
+          stock: existing.stock,
+        },
+      });
+
+      return reply.send({
+        message: "Flash sale berhasil dihapus.",
+      });
     },
   });
 

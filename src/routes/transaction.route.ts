@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { serializeData } from "../utils/json";
 import { ensureAdmin } from "../utils/auth";
 import DigiflazzClient from "../plugins/digiflazz-api";
+import { createActivityLog } from "../utils/activity-log";
 
 const allowedPaymentStatuses = ["PENDING", "SUCCESS", "FAILED", "REFUND"] as const;
 const allowedOrderStatuses = ["WAIT_PAYMENT", "PENDING", "SUCCESS", "FAILED"] as const;
@@ -255,6 +256,22 @@ export default async function (fastify: FastInstance) {
             },
           });
 
+          await createActivityLog(fastify, {
+            actorUserId: req.user?.id,
+            actorName: req.user?.displayName ?? req.user?.email ?? null,
+            actorRole: req.user?.role ?? null,
+            action: "transaction.retry_order",
+            entityType: "transaction",
+            entityId: retried.id,
+            entityLabel: retried.trxId,
+            description: `Retry order transaksi ${retried.trxId}`,
+            metadata: {
+              retryRefId,
+              retryCount: nextRetryCount,
+              digiflazzStatus: dfData?.status ?? null,
+            },
+          });
+
           return reply.send(
             serializeData({
               message:
@@ -309,6 +326,27 @@ export default async function (fastify: FastInstance) {
               group: true,
               thumbnail: true,
             },
+          },
+        },
+      });
+
+      await createActivityLog(fastify, {
+        actorUserId: req.user?.id,
+        actorName: req.user?.displayName ?? req.user?.email ?? null,
+        actorRole: req.user?.role ?? null,
+        action: "transaction.admin_update",
+        entityType: "transaction",
+        entityId: updated.id,
+        entityLabel: updated.trxId,
+        description: `Update manual transaksi ${updated.trxId}`,
+        metadata: {
+          before: {
+            paymentStatus: existing.paymentStatus,
+            orderStatus: existing.orderStatus,
+          },
+          after: {
+            paymentStatus: updated.paymentStatus,
+            orderStatus: updated.orderStatus,
           },
         },
       });

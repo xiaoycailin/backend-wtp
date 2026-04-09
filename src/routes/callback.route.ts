@@ -260,6 +260,17 @@ export default async function (fastify: FastInstance) {
               },
             });
 
+            if (transaction.flashSaleId) {
+              await tx.flashSale.update({
+                where: { id: transaction.flashSaleId },
+                data: {
+                  stock: {
+                    increment: transaction.quantity,
+                  },
+                },
+              });
+            }
+
             fastify.log.info({ trxId: body.merchantOrderId }, "Payment failed");
           }
         });
@@ -421,6 +432,17 @@ export default async function (fastify: FastInstance) {
               },
             });
 
+            if (transaction.flashSaleId) {
+              await tx.flashSale.update({
+                where: { id: transaction.flashSaleId },
+                data: {
+                  sellCount: {
+                    increment: transaction.quantity,
+                  },
+                },
+              });
+            }
+
             fastify.log.info(
               { ref_id: trxData.ref_id, sn: trxData.sn },
               "Digiflazz transaction success",
@@ -460,6 +482,15 @@ export default async function (fastify: FastInstance) {
                 stock: { increment: transaction.quantity },
               },
             });
+
+            if (transaction.flashSaleId) {
+              await tx.flashSale.update({
+                where: { id: transaction.flashSaleId },
+                data: {
+                  stock: { increment: transaction.quantity },
+                },
+              });
+            }
 
             fastify.log.info(
               { ref_id: trxData.ref_id, rc: trxData.rc },

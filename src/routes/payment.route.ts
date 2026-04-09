@@ -14,6 +14,7 @@ import {
   paymentPurchaseSchema,
   paymentReviewSchema,
 } from "../schemas/payment.schema";
+import { createActivityLog } from "../utils/activity-log";
 
 function computeFlashDiscount(
   basePrice: number,
@@ -88,6 +89,19 @@ export default async function (fastify: FastInstance) {
       const payment = await fastify.prisma.paymentMethod.create({
         data: body as any,
       });
+
+      await createActivityLog(fastify, {
+        actorUserId: req.user?.id,
+        actorName: req.user?.displayName ?? req.user?.email ?? null,
+        actorRole: req.user?.role ?? null,
+        action: "payment.create",
+        entityType: "payment_method",
+        entityId: String(payment.id),
+        entityLabel: payment.paymentName,
+        description: `Membuat payment method ${payment.paymentName}`,
+        metadata: body,
+      });
+
       return reply.status(201).send(payment);
     },
   });
@@ -139,6 +153,21 @@ export default async function (fastify: FastInstance) {
         data: body as any,
       });
 
+      await createActivityLog(fastify, {
+        actorUserId: req.user?.id,
+        actorName: req.user?.displayName ?? req.user?.email ?? null,
+        actorRole: req.user?.role ?? null,
+        action: "payment.update",
+        entityType: "payment_method",
+        entityId: String(updated.id),
+        entityLabel: updated.paymentName,
+        description: `Mengubah payment method ${updated.paymentName}`,
+        metadata: {
+          before: existing,
+          after: updated,
+        },
+      });
+
       return reply.send({
         message: "Payment method updated successfully.",
         data: updated,
@@ -181,6 +210,22 @@ export default async function (fastify: FastInstance) {
       }
 
       await fastify.prisma.paymentMethod.delete({ where: { id: paymentId } });
+
+      await createActivityLog(fastify, {
+        actorUserId: req.user?.id,
+        actorName: req.user?.displayName ?? req.user?.email ?? null,
+        actorRole: req.user?.role ?? null,
+        action: "payment.delete",
+        entityType: "payment_method",
+        entityId: String(existing.id),
+        entityLabel: existing.paymentName,
+        description: `Menghapus payment method ${existing.paymentName}`,
+        metadata: {
+          methodCode: existing.methodCode,
+          paymentVisibility: existing.paymentVisibility,
+        },
+      });
+
       return reply.send({ message: "Payment method deleted successfully." });
     },
   });
@@ -230,6 +275,7 @@ export default async function (fastify: FastInstance) {
       const flashSale = await fastify.prisma.flashSale.findFirst({
         where: {
           productId: itemId,
+          stock: { gte: qty },
           ...(flashId ? { id: flashId } : {}),
         },
       });
@@ -340,9 +386,16 @@ export default async function (fastify: FastInstance) {
       const flashSale = await fastify.prisma.flashSale.findFirst({
         where: {
           productId: itemId,
+          stock: { gte: qty },
           ...(flashId ? { id: flashId } : {}),
         },
       });
+
+      if (flashId && !flashSale) {
+        return reply.status(404).send({
+          message: "Flash sale tidak tersedia atau stok habis",
+        });
+      }
 
       if (flashSale && qty > 1) {
         return reply.status(400).send({
@@ -438,6 +491,13 @@ export default async function (fastify: FastInstance) {
           where: { id: product.id },
         });
 
+        if (flashSale?.id) {
+          await tx.flashSale.update({
+            where: { id: flashSale.id },
+            data: { stock: { decrement: qty } },
+          });
+        }
+
         return trx;
       });
 
@@ -475,6 +535,7 @@ export default async function (fastify: FastInstance) {
       const flashSale = await fastify.prisma.flashSale.findFirst({
         where: {
           productId: itemId,
+          stock: { gte: qty },
           ...(flashId ? { id: flashId } : {}),
         },
       });
