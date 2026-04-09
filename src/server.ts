@@ -16,6 +16,7 @@ import gameCheckRoute from "./routes/game-check.route";
 import siteconfigRoute from "./routes/siteconfig.route";
 import githubWebhookRoute from "./routes/github-webhook.route";
 import activityRoute from "./routes/activity.route";
+import systemLogRoute from "./routes/system-log.route";
 
 const buildServer = async () => {
   const app = Fastify({
@@ -84,6 +85,7 @@ const buildServer = async () => {
   app.register(gameCheckRoute);
   app.register(siteconfigRoute);
   app.register(activityRoute);
+  app.register(systemLogRoute);
   app.register(githubWebhookRoute);
 
   return app;

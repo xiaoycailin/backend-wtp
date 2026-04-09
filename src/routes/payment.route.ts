@@ -15,6 +15,7 @@ import {
   paymentReviewSchema,
 } from "../schemas/payment.schema";
 import { createActivityLog } from "../utils/activity-log";
+import { createSystemLog } from "../utils/system-log";
 
 function computeFlashDiscount(
   basePrice: number,
@@ -455,6 +456,32 @@ export default async function (fastify: FastInstance) {
           error?.data?.message ??
           error?.responseMessage ??
           "Gagal membuat pembayaran ke gateway.";
+
+        if (error?.provider || error?.statusCode) {
+          await createSystemLog(fastify, {
+            type: "third_party_error",
+            source: "duitku.create_payment",
+            message,
+            statusCode: error?.statusCode ?? 502,
+            method: req.method,
+            url: req.url,
+            trxId: merchantOrderId,
+            provider: error?.provider ?? "duitku",
+            requestPayload: error?.requestPayload ?? {
+              amount: totalPrice,
+              itemName: product.title,
+              quantity: qty,
+              merchantOrderId,
+              paymentMethod: payment.methodCode,
+              email,
+              phoneNumber,
+              callbackUrl,
+              returnUrl,
+            },
+            responsePayload: error?.responsePayload ?? error?.data ?? error ?? null,
+            errorStack: error?.stack ?? null,
+          });
+        }
 
         return reply.status(502).send({
           message,

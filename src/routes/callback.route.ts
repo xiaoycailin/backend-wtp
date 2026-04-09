@@ -3,6 +3,7 @@ import { FastInstance } from "../utils/fastify";
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
 import DigiflazzClient from "plugins/digiflazz-api";
+import { createSystemLog } from "../utils/system-log";
 
 // ─── Duitku ──────────────────────────────────────────────────────────────────
 
@@ -133,6 +134,17 @@ export default async function (fastify: FastInstance) {
           { errors: parseResult.error.issues },
           "Invalid Duitku callback payload",
         );
+        await createSystemLog(fastify, {
+          type: "duitku_callback",
+          source: "callback.payment.duitku",
+          message: "Invalid Duitku callback payload",
+          statusCode: 400,
+          method: req.method,
+          url: req.url,
+          requestPayload: req.body,
+          metadata: { errors: parseResult.error.issues },
+          provider: "duitku",
+        });
         return reply.status(400).send({ message: "Invalid payload" });
       }
 
@@ -154,6 +166,17 @@ export default async function (fastify: FastInstance) {
           { merchantOrderId: body.merchantOrderId },
           "Duitku callback signature mismatch",
         );
+        await createSystemLog(fastify, {
+          type: "duitku_callback",
+          source: "callback.payment.duitku",
+          message: "Duitku callback signature mismatch",
+          statusCode: 401,
+          method: req.method,
+          url: req.url,
+          trxId: body.merchantOrderId,
+          provider: "duitku",
+          requestPayload: body,
+        });
         return reply.status(401).send({ message: "Invalid signature" });
       }
 
@@ -238,8 +261,27 @@ export default async function (fastify: FastInstance) {
                   transaction.trxId,
                 );
                 fastify.log.info(requestTrx, "TRX DIGIFLAZZ");
-              } catch (error) {
+              } catch (error: any) {
                 fastify.log.error(error, "something error");
+                if (error?.provider || error?.statusCode) {
+                  await createSystemLog(fastify, {
+                    type: "third_party_error",
+                    source: "digiflazz.create_order",
+                    message: error?.data?.message ?? error?.message ?? "Gagal kirim order ke Digiflazz",
+                    statusCode: error?.statusCode ?? 502,
+                    method: req.method,
+                    url: req.url,
+                    trxId: transaction.trxId,
+                    provider: error?.provider ?? "digiflazz",
+                    requestPayload: error?.requestPayload ?? {
+                      skuCode: transaction.skuCode,
+                      customerNo: `${userData.primary_id}${userData.server_id}`,
+                      refId: transaction.trxId,
+                    },
+                    responsePayload: error?.responsePayload ?? error?.data ?? error ?? null,
+                    errorStack: error?.stack ?? null,
+                  });
+                }
               }
             } else {
               fastify.log.error("skuCode not found");
@@ -279,8 +321,33 @@ export default async function (fastify: FastInstance) {
         if (statusCode === 500) {
           fastify.log.error(err, "Unexpected error processing Duitku callback");
         }
+        await createSystemLog(fastify, {
+          type: "duitku_callback",
+          source: "callback.payment.duitku",
+          message: err?.message ?? "Unexpected error processing Duitku callback",
+          statusCode,
+          method: req.method,
+          url: req.url,
+          trxId: (req.body as any)?.merchantOrderId ?? null,
+          provider: "duitku",
+          requestPayload: req.body,
+          errorStack: err?.stack ?? null,
+        });
         return reply.status(statusCode).send({ message: err.message });
       }
+
+      await createSystemLog(fastify, {
+        type: "duitku_callback",
+        source: "callback.payment.duitku",
+        message: "Duitku callback processed",
+        statusCode: 200,
+        method: req.method,
+        url: req.url,
+        trxId: body.merchantOrderId,
+        provider: "duitku",
+        requestPayload: body,
+        responsePayload: { message: "OK" },
+      });
 
       return reply.send({ message: "OK" });
     },
@@ -318,6 +385,17 @@ export default async function (fastify: FastInstance) {
           { signature: signatureHeader },
           "Digiflazz callback signature mismatch",
         );
+        await createSystemLog(fastify, {
+          type: "digiflazz_callback",
+          source: "callback.agregator.digiflazz",
+          message: "Digiflazz callback signature mismatch",
+          statusCode: 401,
+          method: req.method,
+          url: req.url,
+          provider: "digiflazz",
+          requestPayload: req.body,
+          metadata: { signatureHeader },
+        });
         return reply.status(401).send({ message: "Invalid signature" });
       }
 
@@ -328,6 +406,17 @@ export default async function (fastify: FastInstance) {
           { errors: parseResult.error.issues },
           "Invalid Digiflazz callback payload",
         );
+        await createSystemLog(fastify, {
+          type: "digiflazz_callback",
+          source: "callback.agregator.digiflazz",
+          message: "Invalid Digiflazz callback payload",
+          statusCode: 400,
+          method: req.method,
+          url: req.url,
+          provider: "digiflazz",
+          requestPayload: req.body,
+          metadata: { errors: parseResult.error.issues },
+        });
         return reply.status(400).send({ message: "Invalid payload" });
       }
 
@@ -506,9 +595,34 @@ export default async function (fastify: FastInstance) {
         });
       } catch (err: any) {
         fastify.log.error(err, "Error processing Digiflazz callback");
+        await createSystemLog(fastify, {
+          type: "digiflazz_callback",
+          source: "callback.agregator.digiflazz",
+          message: err?.message ?? "Error processing Digiflazz callback",
+          statusCode: 500,
+          method: req.method,
+          url: req.url,
+          trxId: (req.body as any)?.data?.ref_id ?? null,
+          provider: "digiflazz",
+          requestPayload: req.body,
+          errorStack: err?.stack ?? null,
+        });
         // Tetap return 200 agar Digiflazz tidak infinite-retry
         // Error di-log untuk ditangani manual
       }
+
+      await createSystemLog(fastify, {
+        type: "digiflazz_callback",
+        source: "callback.agregator.digiflazz",
+        message: "Digiflazz callback processed",
+        statusCode: 200,
+        method: req.method,
+        url: req.url,
+        trxId: trxData.ref_id,
+        provider: "digiflazz",
+        requestPayload: req.body,
+        responsePayload: { message: "OK" },
+      });
 
       // Selalu balas 200 OK ke Digiflazz
       return reply.send({ message: "OK" });

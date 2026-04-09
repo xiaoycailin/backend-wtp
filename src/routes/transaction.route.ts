@@ -5,6 +5,7 @@ import { serializeData } from "../utils/json";
 import { ensureAdmin } from "../utils/auth";
 import DigiflazzClient from "../plugins/digiflazz-api";
 import { createActivityLog } from "../utils/activity-log";
+import { createSystemLog } from "../utils/system-log";
 
 const allowedPaymentStatuses = ["PENDING", "SUCCESS", "FAILED", "REFUND"] as const;
 const allowedOrderStatuses = ["WAIT_PAYMENT", "PENDING", "SUCCESS", "FAILED"] as const;
@@ -286,6 +287,31 @@ export default async function (fastify: FastInstance) {
           );
         } catch (error: any) {
           req.log.error({ error, trxId: existing.trxId, retryRefId }, "Retry order Digiflazz failed");
+
+          if (error?.provider || error?.statusCode) {
+            await createSystemLog(fastify, {
+              type: "third_party_error",
+              source: "digiflazz.retry_order",
+              message: error?.data?.message ?? error?.message ?? "Gagal retry order ke Digiflazz",
+              statusCode: error?.statusCode ?? 502,
+              method: req.method,
+              url: req.url,
+              trxId: existing.trxId,
+              provider: error?.provider ?? "digiflazz",
+              requestPayload: error?.requestPayload ?? {
+                skuCode: existing.skuCode,
+                customerNo,
+                retryRefId,
+              },
+              responsePayload: error?.responsePayload ?? error?.data ?? error ?? null,
+              errorStack: error?.stack ?? null,
+              metadata: {
+                retryRefId,
+                originalTrxId: existing.trxId,
+              },
+            });
+          }
+
           return reply.status(502).send({
             message: error?.data?.message ?? error?.message ?? "Gagal retry order ke Digiflazz",
           });

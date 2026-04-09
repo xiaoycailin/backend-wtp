@@ -2,6 +2,9 @@ export interface HttpError {
   statusCode: number;
   message: string;
   data?: unknown;
+  provider?: string;
+  url?: string;
+  requestPayload?: unknown;
 }
 
 /**
@@ -50,6 +53,9 @@ export class HttpClient {
           statusCode: response.status,
           message: this.extractErrorMessage(data),
           data,
+          provider: "digiflazz",
+          url,
+          requestPayload: body,
         };
         throw httpError;
       }
@@ -64,6 +70,9 @@ export class HttpClient {
         const httpError: HttpError = {
           statusCode: 408,
           message: `Request timeout setelah ${this.timeout}ms`,
+          provider: "digiflazz",
+          url,
+          requestPayload: body,
         };
         throw httpError;
       }
@@ -75,6 +84,9 @@ export class HttpClient {
           error instanceof Error
             ? error.message
             : "Terjadi kesalahan pada request",
+        provider: "digiflazz",
+        url,
+        requestPayload: body,
       };
       throw httpError;
     } finally {
