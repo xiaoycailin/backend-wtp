@@ -2,6 +2,7 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { exec } from "child_process";
 import crypto from "crypto";
 import { logger } from "../utils/logger";
+import { createSystemLog } from "../utils/system-log";
 
 const ALLOWED_REPO = process.env.GITHUB_ALLOWED_REPO || "aiden2209-dev/marketplaceservice";
 const ALLOWED_BRANCH = process.env.GITHUB_ALLOWED_BRANCH || "refs/heads/main";
@@ -83,8 +84,24 @@ export default async function githubWebhook(fastify: FastifyInstance) {
           time: new Date().toISOString(),
           message,
         });
-      } catch (err) {
+      } catch (err: any) {
         logger.error({ err }, "Webhook processing error");
+        await createSystemLog(fastify as any, {
+          type: "app_error",
+          source: "github_webhook.deploy",
+          message: err?.message ?? "Webhook processing error",
+          statusCode: err?.statusCode ?? 500,
+          method: req.method,
+          url: req.url,
+          requestPayload: {
+            headers: {
+              "x-github-event": req.headers["x-github-event"],
+              "x-hub-signature-256": req.headers["x-hub-signature-256"] ? "[redacted]" : null,
+            },
+            body: req.body,
+          },
+          errorStack: err?.stack ?? null,
+        });
         return reply.status(500).send({ error: "Internal server error" });
       }
     },

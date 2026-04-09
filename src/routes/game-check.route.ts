@@ -4,6 +4,7 @@ import {
   getSupportedGames,
   GameCode,
 } from "../utils/gameIdChecker";
+import { createSystemLog } from "../utils/system-log";
 
 export default async function gameCheckRoute(fastify: FastInstance) {
   // ===========================
@@ -72,6 +73,18 @@ export default async function gameCheckRoute(fastify: FastInstance) {
         }
 
         fastify.log.error(error, "Game ID check upstream error");
+        await createSystemLog(fastify, {
+          type: "third_party_error",
+          source: "game_check.validate_user_id",
+          message,
+          statusCode: error?.statusCode ?? 502,
+          method: req.method,
+          url: req.url,
+          provider: (error as any)?.provider ?? game,
+          requestPayload: { game, userId, zoneId },
+          responsePayload: (error as any)?.responsePayload ?? (error as any)?.data ?? null,
+          errorStack: error?.stack ?? null,
+        });
         return reply.status(502).send({
           success: false,
           message: "Failed to validate game ID. Please try again later.",
