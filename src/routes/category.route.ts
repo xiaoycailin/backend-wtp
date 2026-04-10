@@ -1,7 +1,7 @@
 import { authMiddleware } from "../plugins/authMiddleware";
 import { FastInstance, slugify } from "../utils/fastify";
 import { convertBigIntAndDate } from "./products.route";
-import { cacheMiddleware } from "../utils/cache-utils";
+// import { cacheMiddleware } from "../utils/cache-utils";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 export default async function (fastify: FastInstance) {
@@ -26,20 +26,68 @@ export default async function (fastify: FastInstance) {
   };
 
   fastify.get("/category", {
-    preHandler: cacheMiddleware(fastify, 600),
-    handler: async (_req: FastifyRequest, reply: FastifyReply) => {
-      const categories = await fastify.prisma.category.findMany({
-        include: {
-          subCategories: true,
-        },
-      });
+    handler: async (req: FastifyRequest, reply: FastifyReply) => {
+      const { productInclude } = req.query as any;
+      const includePriceFrom = productInclude === "true";
 
-      return reply.send(categories);
+      try {
+        const categories = await fastify.prisma.category.findMany({
+          include: {
+            subCategories: {
+              select: {
+                badge: true,
+                banners: true,
+                brand: true,
+                categoryId: true,
+                createdAt: true,
+                thumbnail: true,
+                title: true,
+                slug: true,
+                id: true,
+                instant: true,
+                popular: true,
+                // hanya lompatin relasi kalau memang butuh
+                ...(includePriceFrom && {
+                  products: {
+                    where: {
+                      status: { in: ["PUBLISHED", "AVAILABLE", "SOLD"] },
+                    },
+                    select: { price: true },
+                    orderBy: { price: "asc" },
+                    take: 1,
+                  },
+                }),
+              },
+            },
+          },
+        });
+
+        // map ke priceFrom dan buang products
+        const result = categories.map((cat) => ({
+          ...cat,
+          subCategories: cat.subCategories.map((sub: any) => {
+            const priceFrom =
+              includePriceFrom && sub.products?.[0]?.price != null
+                ? sub.products[0].price
+                : null;
+
+            const { products, ...rest } = sub;
+            return { ...rest, priceFrom };
+          }),
+        }));
+
+        return reply.send(convertBigIntAndDate(result));
+      } catch (err) {
+        fastify.log.error(err);
+        return reply.status(500).send({
+          message: "Internal server error",
+        });
+      }
     },
   });
 
   fastify.get("/category/sub", {
-    preHandler: cacheMiddleware(fastify, 600),
+    // preHandler: cacheMiddleware(fastify, 600),
     handler: async (_req: FastifyRequest, reply: FastifyReply) => {
       const subCategories = await fastify.prisma.subCategory.findMany({
         include: {
@@ -149,7 +197,7 @@ export default async function (fastify: FastInstance) {
       if (!ensureAdmin(user, reply)) return;
 
       const { categoryId } = req.params as any;
-      const { title, thumbnail, description, banners, brand } = req.body as any;
+      const { title, thumbnail, description, banners, brand, badgeId } = req.body as any;
       if (!validateName(title, reply)) return;
 
       const slug = slugify(title);
@@ -187,6 +235,7 @@ export default async function (fastify: FastInstance) {
           banners,
           description,
           thumbnail,
+          badgeId: badgeId ? Number(badgeId) : null,
         },
       });
 
@@ -289,7 +338,7 @@ export default async function (fastify: FastInstance) {
       if (!ensureAdmin(user, reply)) return;
 
       const { subId } = req.params as any;
-      const { title, categoryId, thumbnail, description, banners, brand } =
+      const { title, categoryId, thumbnail, description, banners, brand, badgeId } =
         req.body as any;
 
       if (!validateName(title, reply)) return;
@@ -333,6 +382,7 @@ export default async function (fastify: FastInstance) {
           description,
           brand,
           categoryId: newCategoryId,
+          badgeId: badgeId ? Number(badgeId) : null,
         },
       });
 

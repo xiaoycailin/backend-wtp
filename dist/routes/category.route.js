@@ -4,7 +4,6 @@ exports.default = default_1;
 const authMiddleware_1 = require("../plugins/authMiddleware");
 const fastify_1 = require("../utils/fastify");
 const products_route_1 = require("./products.route");
-const cache_utils_1 = require("../utils/cache-utils");
 async function default_1(fastify) {
     const ensureAdmin = (user, reply) => {
         if (!user || user.role !== "admin") {
@@ -25,18 +24,63 @@ async function default_1(fastify) {
         return true;
     };
     fastify.get("/category", {
-        preHandler: (0, cache_utils_1.cacheMiddleware)(fastify, 600),
-        handler: async (_req, reply) => {
-            const categories = await fastify.prisma.category.findMany({
-                include: {
-                    subCategories: true,
-                },
-            });
-            return reply.send(categories);
+        handler: async (req, reply) => {
+            const { productInclude } = req.query;
+            const includePriceFrom = productInclude === "true";
+            try {
+                const categories = await fastify.prisma.category.findMany({
+                    include: {
+                        subCategories: {
+                            select: {
+                                badge: true,
+                                banners: true,
+                                brand: true,
+                                categoryId: true,
+                                createdAt: true,
+                                thumbnail: true,
+                                title: true,
+                                slug: true,
+                                id: true,
+                                instant: true,
+                                popular: true,
+                                // hanya lompatin relasi kalau memang butuh
+                                ...(includePriceFrom && {
+                                    products: {
+                                        where: {
+                                            status: { in: ["PUBLISHED", "AVAILABLE", "SOLD"] },
+                                        },
+                                        select: { price: true },
+                                        orderBy: { price: "asc" },
+                                        take: 1,
+                                    },
+                                }),
+                            },
+                        },
+                    },
+                });
+                // map ke priceFrom dan buang products
+                const result = categories.map((cat) => ({
+                    ...cat,
+                    subCategories: cat.subCategories.map((sub) => {
+                        const priceFrom = includePriceFrom && sub.products?.[0]?.price != null
+                            ? sub.products[0].price
+                            : null;
+                        const { products, ...rest } = sub;
+                        return { ...rest, priceFrom };
+                    }),
+                }));
+                return reply.send((0, products_route_1.convertBigIntAndDate)(result));
+            }
+            catch (err) {
+                fastify.log.error(err);
+                return reply.status(500).send({
+                    message: "Internal server error",
+                });
+            }
         },
     });
     fastify.get("/category/sub", {
-        preHandler: (0, cache_utils_1.cacheMiddleware)(fastify, 600),
+        // preHandler: cacheMiddleware(fastify, 600),
         handler: async (_req, reply) => {
             const subCategories = await fastify.prisma.subCategory.findMany({
                 include: {
@@ -131,7 +175,7 @@ async function default_1(fastify) {
             if (!ensureAdmin(user, reply))
                 return;
             const { categoryId } = req.params;
-            const { title, thumbnail, description, banners, brand } = req.body;
+            const { title, thumbnail, description, banners, brand, badgeId } = req.body;
             if (!validateName(title, reply))
                 return;
             const slug = (0, fastify_1.slugify)(title);
@@ -163,6 +207,7 @@ async function default_1(fastify) {
                     banners,
                     description,
                     thumbnail,
+                    badgeId: badgeId ? Number(badgeId) : null,
                 },
             });
             return reply.status(201).send({
@@ -250,7 +295,7 @@ async function default_1(fastify) {
             if (!ensureAdmin(user, reply))
                 return;
             const { subId } = req.params;
-            const { title, categoryId, thumbnail, description, banners, brand } = req.body;
+            const { title, categoryId, thumbnail, description, banners, brand, badgeId } = req.body;
             if (!validateName(title, reply))
                 return;
             const slug = (0, fastify_1.slugify)(title);
@@ -285,6 +330,7 @@ async function default_1(fastify) {
                     description,
                     brand,
                     categoryId: newCategoryId,
+                    badgeId: badgeId ? Number(badgeId) : null,
                 },
             });
             return reply.send({

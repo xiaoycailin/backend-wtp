@@ -84,7 +84,7 @@ function forbidNonAdmin(req: any, reply: any) {
 
 export default async function (fastify: FastInstance) {
   fastify.get("/site-config", {
-    preHandler: cacheMiddleware(fastify, 300),
+    // preHandler: cacheMiddleware(fastify, 300),
     handler: async (_req: FastifyRequest, reply: FastifyReply) => {
       const config = await fastify.prisma.siteConfig.findFirst({
         where: { id: 1 },
@@ -166,7 +166,7 @@ export default async function (fastify: FastInstance) {
         }
       }
 
-      invalidateCache(fastify, "/site-config");
+      // invalidateCache(fastify, "/site-config");
 
       return reply.send({
         message: "Site config berhasil diperbarui.",
