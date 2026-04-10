@@ -18,6 +18,7 @@ import githubWebhookRoute from "./routes/github-webhook.route";
 import activityRoute from "./routes/activity.route";
 import systemLogRoute from "./routes/system-log.route";
 import badgeRoute from "./routes/badge.route";
+import leaderboardRoute from "./routes/leaderboard.route";
 import cachePlugin from "./plugins/cache";
 
 const buildServer = async () => {
@@ -90,6 +91,7 @@ const buildServer = async () => {
   await app.register(activityRoute);
   await app.register(systemLogRoute);
   await app.register(badgeRoute);
+  await app.register(leaderboardRoute);
   await app.register(githubWebhookRoute);
 
   return app;

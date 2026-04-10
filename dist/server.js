@@ -22,6 +22,7 @@ const github_webhook_route_1 = __importDefault(require("./routes/github-webhook.
 const activity_route_1 = __importDefault(require("./routes/activity.route"));
 const system_log_route_1 = __importDefault(require("./routes/system-log.route"));
 const badge_route_1 = __importDefault(require("./routes/badge.route"));
+const leaderboard_route_1 = __importDefault(require("./routes/leaderboard.route"));
 const cache_1 = __importDefault(require("./plugins/cache"));
 const buildServer = async () => {
     const app = (0, fastify_1.default)({
@@ -87,6 +88,7 @@ const buildServer = async () => {
     await app.register(activity_route_1.default);
     await app.register(system_log_route_1.default);
     await app.register(badge_route_1.default);
+    await app.register(leaderboard_route_1.default);
     await app.register(github_webhook_route_1.default);
     return app;
 };
