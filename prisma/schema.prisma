@@ -246,6 +246,19 @@ model PaymentMethod {
   transactions      Transactions[]
 }
 
+enum BannerType {
+  popup
+  banner
+}
+
+model Banners {
+  id       Int        @id @default(autoincrement())
+  title    String
+  imageUrl String
+  type     BannerType
+  clickUrl String?
+}
+
 model ActivityLog {
   id          String   @id @default(uuid())
   actorUserId String?

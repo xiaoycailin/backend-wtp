@@ -19,6 +19,7 @@ import activityRoute from "./routes/activity.route";
 import systemLogRoute from "./routes/system-log.route";
 import badgeRoute from "./routes/badge.route";
 import leaderboardRoute from "./routes/leaderboard.route";
+import bannerRoute from "./routes/banner.route";
 import cachePlugin from "./plugins/cache";
 
 const buildServer = async () => {
@@ -92,6 +93,7 @@ const buildServer = async () => {
   await app.register(systemLogRoute);
   await app.register(badgeRoute);
   await app.register(leaderboardRoute);
+  await app.register(bannerRoute);
   await app.register(githubWebhookRoute);
 
   return app;
