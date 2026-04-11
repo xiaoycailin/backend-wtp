@@ -371,7 +371,7 @@ async function productRoutes(fastify) {
                 return;
             if (!ensureSellerOrAdmin(user, reply))
                 return;
-            const { title, description, subCategoryId, price, currency, stock, thumbnails, conditionNotes, special, } = req.body;
+            const { sku, title, description, subCategoryId, price, currency, stock, thumbnails, conditionNotes, special, } = req.body;
             if (!title || !subCategoryId) {
                 return reply.status(400).send({
                     message: "Title and subCategoryId are required.",
@@ -388,6 +388,7 @@ async function productRoutes(fastify) {
             }
             const newProduct = await fastify.prisma.products.create({
                 data: {
+                    skuCode: sku,
                     sellerUserId: user.id,
                     title,
                     slug,

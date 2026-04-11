@@ -435,6 +435,7 @@ export default async function productRoutes(fastify: FastInstance) {
       if (!ensureSellerOrAdmin(user, reply)) return;
 
       const {
+        sku,
         title,
         description,
         subCategoryId,
@@ -465,6 +466,7 @@ export default async function productRoutes(fastify: FastInstance) {
 
       const newProduct = await fastify.prisma.products.create({
         data: {
+          skuCode: sku,
           sellerUserId: user.id,
           title,
           slug,
