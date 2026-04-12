@@ -32,8 +32,12 @@ export default async function (fastify: FastInstance) {
 
       try {
         const categories = await fastify.prisma.category.findMany({
+          orderBy: {
+            position: "asc",
+          },
           include: {
             subCategories: {
+              orderBy: { position: "asc" },
               select: {
                 badge: true,
                 banners: true,
@@ -46,7 +50,6 @@ export default async function (fastify: FastInstance) {
                 id: true,
                 instant: true,
                 popular: true,
-                // hanya lompatin relasi kalau memang butuh
                 ...(includePriceFrom && {
                   products: {
                     where: {
@@ -126,6 +129,9 @@ export default async function (fastify: FastInstance) {
                       in: ["PUBLISHED", "AVAILABLE", "SOLD"],
                     },
                   },
+                  orderBy: {
+                    price: "asc",
+                  },
                   include: {
                     flashSales: {
                       select: {
@@ -197,7 +203,8 @@ export default async function (fastify: FastInstance) {
       if (!ensureAdmin(user, reply)) return;
 
       const { categoryId } = req.params as any;
-      const { title, thumbnail, description, banners, brand, badgeId } = req.body as any;
+      const { title, thumbnail, description, banners, brand, badgeId } =
+        req.body as any;
       if (!validateName(title, reply)) return;
 
       const slug = slugify(title);
@@ -256,10 +263,11 @@ export default async function (fastify: FastInstance) {
       if (!ensureAdmin(user, reply)) return;
 
       const { categoryId } = req.params as any;
-      const { title } = req.body as any;
-      if (!validateName(title, reply)) return;
+      const { title, updatedAt, position } = req.body as any; // TAMBAH position
 
-      const slug = slugify(title);
+      if (title !== undefined) {
+        if (!validateName(title, reply)) return;
+      }
 
       const exists = await fastify.prisma.category.findUnique({
         where: { id: categoryId },
@@ -269,28 +277,111 @@ export default async function (fastify: FastInstance) {
         return reply.status(404).send({ message: "Category not found." });
       }
 
-      const conflict = await fastify.prisma.category.count({
-        where: {
-          id: { not: categoryId },
-          OR: [{ slug }, { title }],
-        },
-      });
+      // cek konflik hanya kalau title diisi
+      if (title !== undefined) {
+        const slug = slugify(title);
+        const conflict = await fastify.prisma.category.count({
+          where: {
+            id: { not: categoryId },
+            OR: [{ slug }, { title }],
+          },
+        });
 
-      if (conflict > 0) {
-        return reply.status(409).send({
-          message: "Another category already uses this name.",
+        if (conflict > 0) {
+          return reply.status(409).send({
+            message: "Another category already uses this name.",
+          });
+        }
+
+        const updated = await fastify.prisma.category.update({
+          where: { id: categoryId },
+          data: {
+            title,
+            slug: slugify(title),
+            ...(updatedAt !== undefined && { updatedAt }),
+            ...(position !== undefined && { position }),
+          },
+        });
+
+        return reply.send({
+          message: "Category updated successfully.",
+          ...updated,
         });
       }
 
+      // kalau hanya update position (tanpa title)
       const updated = await fastify.prisma.category.update({
         where: { id: categoryId },
-        data: { title, slug },
+        data: {
+          ...(updatedAt !== undefined && { updatedAt }),
+          ...(position !== undefined && { position }),
+        },
       });
 
       return reply.send({
         message: "Category updated successfully.",
         ...updated,
       });
+    },
+  });
+
+  // ===========================
+  // REORDER CATEGORIES (BATCH)
+  // ===========================
+  fastify.put("/category/reorder", {
+    preHandler: authMiddleware,
+    handler: async (req, reply) => {
+      const user = req.user;
+      if (!ensureAdmin(user, reply)) return;
+
+      const { order } = req.body as {
+        order: { id: string; position: number }[];
+      };
+
+      if (!Array.isArray(order) || order.length === 0) {
+        return reply.status(400).send({ message: "order harus berupa array." });
+      }
+
+      // batch update pakai transaction
+      await fastify.prisma.$transaction(
+        order.map(({ id, position }) =>
+          fastify.prisma.category.update({
+            where: { id },
+            data: { position },
+          }),
+        ),
+      );
+
+      return reply.send({ message: "Category order updated successfully." });
+    },
+  });
+
+  // Reorder sub kategori — tambah di backend
+  fastify.put("/category/sub/reorder/:categoryId", {
+    preHandler: authMiddleware,
+    handler: async (req, reply) => {
+      const user = req.user;
+      if (!ensureAdmin(user, reply)) return;
+
+      const { categoryId } = req.params as any;
+      const { order } = req.body as {
+        order: { id: string; position: number }[];
+      };
+
+      if (!Array.isArray(order) || !order.length) {
+        return reply.status(400).send({ message: "order harus berupa array." });
+      }
+
+      await fastify.prisma.$transaction(
+        order.map(({ id, position }) =>
+          fastify.prisma.subCategory.update({
+            where: { id, categoryId },
+            data: { position },
+          }),
+        ),
+      );
+
+      return reply.send({ message: "Sub category order updated." });
     },
   });
 
@@ -338,8 +429,15 @@ export default async function (fastify: FastInstance) {
       if (!ensureAdmin(user, reply)) return;
 
       const { subId } = req.params as any;
-      const { title, categoryId, thumbnail, description, banners, brand, badgeId } =
-        req.body as any;
+      const {
+        title,
+        categoryId,
+        thumbnail,
+        description,
+        banners,
+        brand,
+        badgeId,
+      } = req.body as any;
 
       if (!validateName(title, reply)) return;
 

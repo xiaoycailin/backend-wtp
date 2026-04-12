@@ -29,8 +29,12 @@ async function default_1(fastify) {
             const includePriceFrom = productInclude === "true";
             try {
                 const categories = await fastify.prisma.category.findMany({
+                    orderBy: {
+                        position: "asc",
+                    },
                     include: {
                         subCategories: {
+                            orderBy: { position: "asc" },
                             select: {
                                 badge: true,
                                 banners: true,
@@ -43,7 +47,6 @@ async function default_1(fastify) {
                                 id: true,
                                 instant: true,
                                 popular: true,
-                                // hanya lompatin relasi kalau memang butuh
                                 ...(includePriceFrom && {
                                     products: {
                                         where: {
@@ -112,6 +115,9 @@ async function default_1(fastify) {
                                 status: {
                                     in: ["PUBLISHED", "AVAILABLE", "SOLD"],
                                 },
+                            },
+                            orderBy: {
+                                price: "asc",
                             },
                             include: {
                                 flashSales: {
@@ -226,35 +232,97 @@ async function default_1(fastify) {
             if (!ensureAdmin(user, reply))
                 return;
             const { categoryId } = req.params;
-            const { title } = req.body;
-            if (!validateName(title, reply))
-                return;
-            const slug = (0, fastify_1.slugify)(title);
+            const { title, updatedAt, position } = req.body; // TAMBAH position
+            if (title !== undefined) {
+                if (!validateName(title, reply))
+                    return;
+            }
             const exists = await fastify.prisma.category.findUnique({
                 where: { id: categoryId },
             });
             if (!exists) {
                 return reply.status(404).send({ message: "Category not found." });
             }
-            const conflict = await fastify.prisma.category.count({
-                where: {
-                    id: { not: categoryId },
-                    OR: [{ slug }, { title }],
-                },
-            });
-            if (conflict > 0) {
-                return reply.status(409).send({
-                    message: "Another category already uses this name.",
+            // cek konflik hanya kalau title diisi
+            if (title !== undefined) {
+                const slug = (0, fastify_1.slugify)(title);
+                const conflict = await fastify.prisma.category.count({
+                    where: {
+                        id: { not: categoryId },
+                        OR: [{ slug }, { title }],
+                    },
+                });
+                if (conflict > 0) {
+                    return reply.status(409).send({
+                        message: "Another category already uses this name.",
+                    });
+                }
+                const updated = await fastify.prisma.category.update({
+                    where: { id: categoryId },
+                    data: {
+                        title,
+                        slug: (0, fastify_1.slugify)(title),
+                        ...(updatedAt !== undefined && { updatedAt }),
+                        ...(position !== undefined && { position }),
+                    },
+                });
+                return reply.send({
+                    message: "Category updated successfully.",
+                    ...updated,
                 });
             }
+            // kalau hanya update position (tanpa title)
             const updated = await fastify.prisma.category.update({
                 where: { id: categoryId },
-                data: { title, slug },
+                data: {
+                    ...(updatedAt !== undefined && { updatedAt }),
+                    ...(position !== undefined && { position }),
+                },
             });
             return reply.send({
                 message: "Category updated successfully.",
                 ...updated,
             });
+        },
+    });
+    // ===========================
+    // REORDER CATEGORIES (BATCH)
+    // ===========================
+    fastify.put("/category/reorder", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            const user = req.user;
+            if (!ensureAdmin(user, reply))
+                return;
+            const { order } = req.body;
+            if (!Array.isArray(order) || order.length === 0) {
+                return reply.status(400).send({ message: "order harus berupa array." });
+            }
+            // batch update pakai transaction
+            await fastify.prisma.$transaction(order.map(({ id, position }) => fastify.prisma.category.update({
+                where: { id },
+                data: { position },
+            })));
+            return reply.send({ message: "Category order updated successfully." });
+        },
+    });
+    // Reorder sub kategori — tambah di backend
+    fastify.put("/category/sub/reorder/:categoryId", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            const user = req.user;
+            if (!ensureAdmin(user, reply))
+                return;
+            const { categoryId } = req.params;
+            const { order } = req.body;
+            if (!Array.isArray(order) || !order.length) {
+                return reply.status(400).send({ message: "order harus berupa array." });
+            }
+            await fastify.prisma.$transaction(order.map(({ id, position }) => fastify.prisma.subCategory.update({
+                where: { id, categoryId },
+                data: { position },
+            })));
+            return reply.send({ message: "Sub category order updated." });
         },
     });
     // ===========================
@@ -295,7 +363,7 @@ async function default_1(fastify) {
             if (!ensureAdmin(user, reply))
                 return;
             const { subId } = req.params;
-            const { title, categoryId, thumbnail, description, banners, brand, badgeId } = req.body;
+            const { title, categoryId, thumbnail, description, banners, brand, badgeId, } = req.body;
             if (!validateName(title, reply))
                 return;
             const slug = (0, fastify_1.slugify)(title);
