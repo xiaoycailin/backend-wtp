@@ -68,7 +68,7 @@ const buildServer = async () => {
     app.get("/health", async () => {
         return {
             ok: true,
-            service: "backendwtp",
+            service: "backendwtp-update",
             version: "1",
             timestamp: new Date().toISOString(),
             uptimeSeconds: Math.round(process.uptime()),
