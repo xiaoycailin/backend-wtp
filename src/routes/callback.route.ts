@@ -267,7 +267,10 @@ export default async function (fastify: FastInstance) {
                   await createSystemLog(fastify, {
                     type: "third_party_error",
                     source: "digiflazz.create_order",
-                    message: error?.data?.message ?? error?.message ?? "Gagal kirim order ke Digiflazz",
+                    message:
+                      error?.data?.message ??
+                      error?.message ??
+                      "Gagal kirim order ke Digiflazz",
                     statusCode: error?.statusCode ?? 502,
                     method: req.method,
                     url: req.url,
@@ -278,7 +281,8 @@ export default async function (fastify: FastInstance) {
                       customerNo: `${userData.primary_id}${userData.server_id}`,
                       refId: transaction.trxId,
                     },
-                    responsePayload: error?.responsePayload ?? error?.data ?? error ?? null,
+                    responsePayload:
+                      error?.responsePayload ?? error?.data ?? error ?? null,
                     errorStack: error?.stack ?? null,
                   });
                 }
@@ -294,7 +298,7 @@ export default async function (fastify: FastInstance) {
 
             // Restore stock on failure
             await tx.products.update({
-              where: { id: transaction.productId },
+              where: { id: transaction.productId ?? "0" },
               data: {
                 stock: {
                   increment: transaction.quantity,
@@ -324,7 +328,8 @@ export default async function (fastify: FastInstance) {
         await createSystemLog(fastify, {
           type: "duitku_callback",
           source: "callback.payment.duitku",
-          message: err?.message ?? "Unexpected error processing Duitku callback",
+          message:
+            err?.message ?? "Unexpected error processing Duitku callback",
           statusCode,
           method: req.method,
           url: req.url,
@@ -476,14 +481,18 @@ export default async function (fastify: FastInstance) {
 
           // 4. Update status berdasarkan response Digiflazz
           const currentProviderData =
-            typeof transaction.providerData === "object" && transaction.providerData !== null
+            typeof transaction.providerData === "object" &&
+            transaction.providerData !== null
               ? (transaction.providerData as Record<string, any>)
               : {};
           const retryHistory = Array.isArray(currentProviderData.retryHistory)
             ? [...currentProviderData.retryHistory]
             : [];
-          const retryIndex = retryHistory.findIndex((item: any) => item?.refId === trxData.ref_id);
-          const baseRetryEntry = retryIndex >= 0 ? retryHistory[retryIndex] : null;
+          const retryIndex = retryHistory.findIndex(
+            (item: any) => item?.refId === trxData.ref_id,
+          );
+          const baseRetryEntry =
+            retryIndex >= 0 ? retryHistory[retryIndex] : null;
 
           if (trxData.status === "Sukses") {
             await tx.transactions.update({
@@ -512,7 +521,8 @@ export default async function (fastify: FastInstance) {
                                 rc: trxData.rc,
                                 sn: trxData.sn ?? null,
                                 price: trxData.price ?? null,
-                                buyer_last_saldo: trxData.buyer_last_saldo ?? null,
+                                buyer_last_saldo:
+                                  trxData.buyer_last_saldo ?? null,
                               }
                             : item,
                         )
@@ -566,7 +576,7 @@ export default async function (fastify: FastInstance) {
 
             // Restore stock karena transaksi gagal di provider
             await tx.products.update({
-              where: { id: transaction.productId },
+              where: { id: transaction.productId ?? "0" },
               data: {
                 stock: { increment: transaction.quantity },
               },
