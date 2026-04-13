@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-cd /path/ke/backend-wtp
+cd /home/www/backend-wtp
 
 echo "Pulling latest changes..."
 git pull
