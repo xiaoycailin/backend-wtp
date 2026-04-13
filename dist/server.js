@@ -25,6 +25,23 @@ const badge_route_1 = __importDefault(require("./routes/badge.route"));
 const leaderboard_route_1 = __importDefault(require("./routes/leaderboard.route"));
 const banner_route_1 = __importDefault(require("./routes/banner.route"));
 const cache_1 = __importDefault(require("./plugins/cache"));
+const apiRoutesPlugin = async (instance) => {
+    await instance.register(user_route_1.default);
+    await instance.register(category_route_1.default);
+    await instance.register(products_route_1.default);
+    await instance.register(upload_image_route_1.default);
+    await instance.register(payment_route_1.default);
+    await instance.register(transaction_route_1.default);
+    await instance.register(callback_route_1.default);
+    await instance.register(game_check_route_1.default);
+    await instance.register(siteconfig_route_1.default);
+    await instance.register(activity_route_1.default);
+    await instance.register(system_log_route_1.default);
+    await instance.register(badge_route_1.default);
+    await instance.register(leaderboard_route_1.default);
+    await instance.register(banner_route_1.default);
+    await instance.register(github_webhook_route_1.default);
+};
 const buildServer = async () => {
     const app = (0, fastify_1.default)({
         logger: {
@@ -36,12 +53,10 @@ const buildServer = async () => {
             },
         },
     });
-    // Response wrapper + error handler
     (0, response_1.default)(app);
-    // Plugins
     await app.register(multipart_1.default, {
         limits: {
-            fileSize: 5 * 1024 * 1024, // 5 MB
+            fileSize: 5 * 1024 * 1024,
         },
     });
     app.register(static_1.default, {
@@ -76,22 +91,8 @@ const buildServer = async () => {
             });
         }
     });
-    // Routes
-    await app.register(user_route_1.default);
-    await app.register(category_route_1.default);
-    await app.register(products_route_1.default);
-    await app.register(upload_image_route_1.default);
-    await app.register(payment_route_1.default);
-    await app.register(transaction_route_1.default);
-    await app.register(callback_route_1.default);
-    await app.register(game_check_route_1.default);
-    await app.register(siteconfig_route_1.default);
-    await app.register(activity_route_1.default);
-    await app.register(system_log_route_1.default);
-    await app.register(badge_route_1.default);
-    await app.register(leaderboard_route_1.default);
-    await app.register(banner_route_1.default);
-    await app.register(github_webhook_route_1.default);
+    await app.register(apiRoutesPlugin); // tanpa prefix
+    await app.register(apiRoutesPlugin, { prefix: "/api/v1" }); // dengan /api/v1
     return app;
 };
 exports.default = buildServer;

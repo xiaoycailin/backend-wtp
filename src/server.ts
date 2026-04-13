@@ -1,4 +1,7 @@
-import Fastify from "fastify";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyPluginAsync,
+} from "fastify";
 import prismaPlugin from "./plugins/prisma";
 import response from "./plugins/response";
 import multipart from "@fastify/multipart";
@@ -22,6 +25,26 @@ import leaderboardRoute from "./routes/leaderboard.route";
 import bannerRoute from "./routes/banner.route";
 import cachePlugin from "./plugins/cache";
 
+const apiRoutesPlugin: FastifyPluginAsync = async (
+  instance: FastifyInstance,
+) => {
+  await instance.register(userRoutes);
+  await instance.register(categoryRoute);
+  await instance.register(productRoutes);
+  await instance.register(uploadImageRoute);
+  await instance.register(paymentRoute);
+  await instance.register(transactionRoute);
+  await instance.register(callbackRoute);
+  await instance.register(gameCheckRoute);
+  await instance.register(siteconfigRoute);
+  await instance.register(activityRoute);
+  await instance.register(systemLogRoute);
+  await instance.register(badgeRoute);
+  await instance.register(leaderboardRoute);
+  await instance.register(bannerRoute);
+  await instance.register(githubWebhookRoute);
+};
+
 const buildServer = async () => {
   const app = Fastify({
     logger: {
@@ -34,13 +57,11 @@ const buildServer = async () => {
     },
   });
 
-  // Response wrapper + error handler
   response(app);
 
-  // Plugins
   await app.register(multipart, {
     limits: {
-      fileSize: 5 * 1024 * 1024, // 5 MB
+      fileSize: 5 * 1024 * 1024,
     },
   });
 
@@ -79,22 +100,8 @@ const buildServer = async () => {
     }
   });
 
-  // Routes
-  await app.register(userRoutes);
-  await app.register(categoryRoute);
-  await app.register(productRoutes);
-  await app.register(uploadImageRoute);
-  await app.register(paymentRoute);
-  await app.register(transactionRoute);
-  await app.register(callbackRoute);
-  await app.register(gameCheckRoute);
-  await app.register(siteconfigRoute);
-  await app.register(activityRoute);
-  await app.register(systemLogRoute);
-  await app.register(badgeRoute);
-  await app.register(leaderboardRoute);
-  await app.register(bannerRoute);
-  await app.register(githubWebhookRoute);
+  await app.register(apiRoutesPlugin); // tanpa prefix
+  await app.register(apiRoutesPlugin, { prefix: "/api/v1" }); // dengan /api/v1
 
   return app;
 };
