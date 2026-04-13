@@ -16,6 +16,42 @@ enum Currency {
   IDR
 }
 
+enum BalanceType {
+  WALLET
+  POINTS
+}
+
+model UserBalance {
+  id        Int         @id @default(autoincrement())
+  user      User        @relation(fields: [userId], references: [id])
+  userId    String
+  type      BalanceType
+  amount    BigInt      @default(0) // selalu minor unit (rupiah, bukan float)
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userId, type])
+}
+
+model MoneyEntry {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  amount    BigInt // + kredit, - debit
+  ref       String? // ref transaksi/order
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model PointEntry {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  amount    Int // + earn, - redeem
+  ref       String?
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
 model User {
   id               String         @id @default(uuid())
   email            String         @unique
@@ -31,6 +67,9 @@ model User {
   products         Products[]
   transactions     Transactions[]
   // roleId 1
+  userBalances     UserBalance[]
+  moneyEntries     MoneyEntry[]
+  pointEntries     PointEntry[]
 }
 
 model LoginSession {
@@ -185,8 +224,8 @@ model Transactions {
   userInputDetail Json?
 
   paymentDetails Json
-  product        Products @relation(fields: [productId], references: [id])
-  productId      String
+  product        Products? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productId      String?
   quantity       Int
 
   fee        Float
