@@ -33,12 +33,17 @@ async function githubWebhook(fastify) {
             const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
             if (!webhookSecret) {
                 logger_1.logger.error("GITHUB_WEBHOOK_SECRET env variable is missing");
-                return reply.status(500).send({ error: "Server configuration error" });
+                return reply
+                    .status(500)
+                    .send({ error: "Server configuration error" });
             }
             if (!DEPLOY_COMMAND) {
-                return reply.status(503).send({ error: "Deploy command is not configured" });
+                return reply
+                    .status(503)
+                    .send({ error: "Deploy command is not configured" });
             }
-            const rawBody = req.rawBody ?? (typeof req.body === "string" ? req.body : JSON.stringify(req.body));
+            const rawBody = req.rawBody ??
+                (typeof req.body === "string" ? req.body : JSON.stringify(req.body));
             if (!verifyGithubSignature(rawBody, signature, webhookSecret)) {
                 return reply.status(401).send({ error: "Invalid signature" });
             }
@@ -47,7 +52,9 @@ async function githubWebhook(fastify) {
                 return reply.status(403).send({ error: "Unauthorized repository" });
             }
             if (payload.ref !== ALLOWED_BRANCH) {
-                return reply.status(403).send({ error: "Push is not to allowed branch" });
+                return reply
+                    .status(403)
+                    .send({ error: "Push is not to allowed branch" });
             }
             const message = `Deploy triggered for repo: ${payload.repository?.name}, branch: ${payload.ref}, by: ${payload.pusher?.name}`;
             logger_1.logger.info(message);
@@ -76,7 +83,9 @@ async function githubWebhook(fastify) {
                 requestPayload: {
                     headers: {
                         "x-github-event": req.headers["x-github-event"],
-                        "x-hub-signature-256": req.headers["x-hub-signature-256"] ? "[redacted]" : null,
+                        "x-hub-signature-256": req.headers["x-hub-signature-256"]
+                            ? "[redacted]"
+                            : null,
                     },
                     body: req.body,
                 },

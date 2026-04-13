@@ -4,7 +4,8 @@ import crypto from "crypto";
 import { logger } from "../utils/logger";
 import { createSystemLog } from "../utils/system-log";
 
-const ALLOWED_REPO = process.env.GITHUB_ALLOWED_REPO || "aiden2209-dev/marketplaceservice";
+const ALLOWED_REPO =
+  process.env.GITHUB_ALLOWED_REPO || "aiden2209-dev/marketplaceservice";
 const ALLOWED_BRANCH = process.env.GITHUB_ALLOWED_BRANCH || "refs/heads/main";
 const DEPLOY_COMMAND = process.env.GITHUB_DEPLOY_COMMAND;
 
@@ -32,7 +33,9 @@ export default async function githubWebhook(fastify: FastifyInstance) {
     "/webhook/deploy",
     async (req: FastifyRequest, reply: FastifyReply) => {
       try {
-        const signature = req.headers["x-hub-signature-256"] as string | undefined;
+        const signature = req.headers["x-hub-signature-256"] as
+          | string
+          | undefined;
         const event = req.headers["x-github-event"] as string | undefined;
 
         if (!signature) {
@@ -46,14 +49,20 @@ export default async function githubWebhook(fastify: FastifyInstance) {
         const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
         if (!webhookSecret) {
           logger.error("GITHUB_WEBHOOK_SECRET env variable is missing");
-          return reply.status(500).send({ error: "Server configuration error" });
+          return reply
+            .status(500)
+            .send({ error: "Server configuration error" });
         }
 
         if (!DEPLOY_COMMAND) {
-          return reply.status(503).send({ error: "Deploy command is not configured" });
+          return reply
+            .status(503)
+            .send({ error: "Deploy command is not configured" });
         }
 
-        const rawBody = req.rawBody ?? (typeof req.body === "string" ? req.body : JSON.stringify(req.body));
+        const rawBody =
+          req.rawBody ??
+          (typeof req.body === "string" ? req.body : JSON.stringify(req.body));
         if (!verifyGithubSignature(rawBody, signature, webhookSecret)) {
           return reply.status(401).send({ error: "Invalid signature" });
         }
@@ -64,7 +73,9 @@ export default async function githubWebhook(fastify: FastifyInstance) {
         }
 
         if (payload.ref !== ALLOWED_BRANCH) {
-          return reply.status(403).send({ error: "Push is not to allowed branch" });
+          return reply
+            .status(403)
+            .send({ error: "Push is not to allowed branch" });
         }
 
         const message = `Deploy triggered for repo: ${payload.repository?.name}, branch: ${payload.ref}, by: ${payload.pusher?.name}`;
@@ -96,7 +107,9 @@ export default async function githubWebhook(fastify: FastifyInstance) {
           requestPayload: {
             headers: {
               "x-github-event": req.headers["x-github-event"],
-              "x-hub-signature-256": req.headers["x-hub-signature-256"] ? "[redacted]" : null,
+              "x-hub-signature-256": req.headers["x-hub-signature-256"]
+                ? "[redacted]"
+                : null,
             },
             body: req.body,
           },
