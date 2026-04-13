@@ -1,4 +1,8 @@
 #!/bin/bash
+set -e
+
+cd /path/ke/backend-wtp
+
 echo "Pulling latest changes..."
 git pull
 
@@ -12,4 +16,4 @@ npx prisma generate
 # npm run build
 
 echo "Restarting service..."
-pm2 restart marketplaceservice || pm2 start node --name "marketplaceservice" -- -r tsconfig-paths/register dist/index.js
+pm2 restart backendwtp || pm2 start node --name "backendwtp" -- -r tsconfig-paths/register dist/index.js

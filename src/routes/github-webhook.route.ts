@@ -5,7 +5,7 @@ import { logger } from "../utils/logger";
 import { createSystemLog } from "../utils/system-log";
 
 const ALLOWED_REPO =
-  process.env.GITHUB_ALLOWED_REPO || "aiden2209-dev/marketplaceservice";
+  process.env.GITHUB_ALLOWED_REPO || "xiaoycailin/backend-wtp";
 const ALLOWED_BRANCH = process.env.GITHUB_ALLOWED_BRANCH || "refs/heads/main";
 const DEPLOY_COMMAND = process.env.GITHUB_DEPLOY_COMMAND;
 

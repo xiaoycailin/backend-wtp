@@ -8,7 +8,7 @@ const child_process_1 = require("child_process");
 const crypto_1 = __importDefault(require("crypto"));
 const logger_1 = require("../utils/logger");
 const system_log_1 = require("../utils/system-log");
-const ALLOWED_REPO = process.env.GITHUB_ALLOWED_REPO || "aiden2209-dev/marketplaceservice";
+const ALLOWED_REPO = process.env.GITHUB_ALLOWED_REPO || "xiaoycailin/backend-wtp";
 const ALLOWED_BRANCH = process.env.GITHUB_ALLOWED_BRANCH || "refs/heads/main";
 const DEPLOY_COMMAND = process.env.GITHUB_DEPLOY_COMMAND;
 function verifyGithubSignature(payload, signatureHeader, secret) {
