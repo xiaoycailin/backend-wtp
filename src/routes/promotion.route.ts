@@ -56,7 +56,10 @@ function normalizeDate(value?: string | null) {
   return parsed;
 }
 
-async function validateRelations(fastify: FastInstance, data: z.infer<typeof PromotionSchema>) {
+async function validateRelations(
+  fastify: FastInstance,
+  data: z.infer<typeof PromotionSchema>,
+) {
   if (data.productId) {
     const exists = await fastify.prisma.products.findUnique({
       where: { id: data.productId },
@@ -98,7 +101,7 @@ async function validateRelations(fastify: FastInstance, data: z.infer<typeof Pro
 
 function buildPromotionPayload(data: z.infer<typeof PromotionSchema>) {
   const expiredDate = normalizeDate(data.expiredDate ?? null);
-  if (typeof expiredDate === "object" && "error" in expiredDate) {
+  if (expiredDate && typeof expiredDate === "object" && "error" in expiredDate) {
     return expiredDate;
   }
 
@@ -146,7 +149,9 @@ export default async function promotionRoute(fastify: FastInstance) {
       });
 
       if (!promotion) {
-        return reply.status(404).send({ message: "Promotion tidak ditemukan." });
+        return reply
+          .status(404)
+          .send({ message: "Promotion tidak ditemukan." });
       }
 
       return reply.send(convertBigIntAndDate(promotion));
@@ -218,7 +223,9 @@ export default async function promotionRoute(fastify: FastInstance) {
       });
 
       if (!existing) {
-        return reply.status(404).send({ message: "Promotion tidak ditemukan." });
+        return reply
+          .status(404)
+          .send({ message: "Promotion tidak ditemukan." });
       }
 
       const parsed = PromotionSchema.safeParse(req.body);
@@ -285,7 +292,9 @@ export default async function promotionRoute(fastify: FastInstance) {
       });
 
       if (!existing) {
-        return reply.status(404).send({ message: "Promotion tidak ditemukan." });
+        return reply
+          .status(404)
+          .send({ message: "Promotion tidak ditemukan." });
       }
 
       await fastify.prisma.promotionsCode.delete({
