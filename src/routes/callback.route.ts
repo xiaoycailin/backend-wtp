@@ -4,6 +4,7 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
 import DigiflazzClient from "../plugins/digiflazz-api";
 import { createSystemLog } from "../utils/system-log";
+import { restorePromotionUsage } from "./payment.route";
 
 // ─── Duitku ──────────────────────────────────────────────────────────────────
 
@@ -263,6 +264,36 @@ export default async function (fastify: FastInstance) {
                 fastify.log.info(requestTrx, "TRX DIGIFLAZZ");
               } catch (error: any) {
                 fastify.log.error(error, "something error");
+
+                await tx.transactions.update({
+                  where: { id: transaction.id },
+                  data: {
+                    orderStatus: "FAILED",
+                  },
+                });
+
+                await restorePromotionUsage(tx, transaction);
+
+                await tx.products.update({
+                  where: { id: transaction.productId ?? "0" },
+                  data: {
+                    stock: {
+                      increment: transaction.quantity,
+                    },
+                  },
+                });
+
+                if (transaction.flashSaleId) {
+                  await tx.flashSale.update({
+                    where: { id: transaction.flashSaleId },
+                    data: {
+                      stock: {
+                        increment: transaction.quantity,
+                      },
+                    },
+                  });
+                }
+
                 if (error?.provider || error?.statusCode) {
                   await createSystemLog(fastify, {
                     type: "third_party_error",
@@ -295,6 +326,8 @@ export default async function (fastify: FastInstance) {
               data: { paymentStatus: "FAILED", orderStatus: "FAILED" },
               where: { id: transaction.id },
             });
+
+            await restorePromotionUsage(tx, transaction);
 
             // Restore stock on failure
             await tx.products.update({
@@ -573,6 +606,8 @@ export default async function (fastify: FastInstance) {
                 },
               },
             });
+
+            await restorePromotionUsage(tx, transaction);
 
             // Restore stock karena transaksi gagal di provider
             await tx.products.update({

@@ -31,6 +31,7 @@ export const paymentReviewSchema = z.object({
   qty: z.number().int().positive().max(10),
   userData: userDataSchema.default({}),
   flashId: z.number().int().positive().optional(),
+  promoCode: z.string().trim().optional(),
 });
 
 export const paymentPurchaseSchema = z.object({
@@ -41,10 +42,12 @@ export const paymentPurchaseSchema = z.object({
   phoneNumber: z.string().trim().min(8).max(20).optional(),
   userData: userDataSchema.default({}),
   flashId: z.number().int().positive().optional(),
+  promoCode: z.string().trim().optional(),
 });
 
 export const paymentPricesSchema = z.object({
   itemId: z.string().trim().min(1),
   qty: z.number().int().positive().max(10),
   flashId: z.number().int().positive().optional(),
+  promoCode: z.string().trim().optional(),
 });
