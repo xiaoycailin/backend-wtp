@@ -125,7 +125,7 @@ model SubCategory {
 
   products    Products[]
   thumbnail   String?
-  description String?
+  description String?    @db.LongText
   banners     Json?
   brand       String?
 
@@ -356,6 +356,34 @@ model MediaAsset {
 
   @@index([createdAt], name: "idx_mediaasset_createdat")
   @@index([provider], name: "idx_mediaasset_provider")
+}
+
+model PromotionsCode {
+  id Int @unique @default(autoincrement())
+
+  code  String @unique
+  title String
+
+  productId     String? /// spesifik untuk produk tertentu
+  categoryId    String? /// spesifik untuk kategori tertentu
+  subCategoryId String? /// spesifik untuk sub kategori tertentu
+
+  active         Boolean @default(true)
+  allowFlashSale Boolean @default(false)
+
+  maxUse Int @default(5)
+  used   Int @default(0)
+
+  discType FeeType
+  value    BigInt
+
+  minTrx      Int? @default(1000) /// kasih null atau 0 untuk tanpa minimal transaksi 
+  maxDiscount Int? @default(0) /// kasih null atau 0 untuk tanpa maksimal
+
+  userId String? /// spesifik untuk user tertentu dan gak bisa di pakai oleh user lain
+
+  expiredDate DateTime? /// kosongkan jika tidak mau ada expired
+  createdAt   DateTime  @default(now())
 }
 
 model SiteConfig {

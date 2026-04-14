@@ -144,7 +144,10 @@ async function findApplicablePromotion(
     };
   }
 
-  if (promotion.categoryId && promotion.categoryId !== params.product.categoryId) {
+  if (
+    promotion.categoryId &&
+    promotion.categoryId !== params.product.categoryId
+  ) {
     return {
       promotion: null,
       reason: "Kode promo ini hanya berlaku untuk kategori tertentu.",
@@ -196,7 +199,8 @@ async function restorePromotionUsage(
   },
 ) {
   const providerData =
-    typeof transaction.providerData === "object" && transaction.providerData !== null
+    typeof transaction.providerData === "object" &&
+    transaction.providerData !== null
       ? (transaction.providerData as Record<string, any>)
       : {};
 
@@ -413,12 +417,22 @@ export default async function (fastify: FastInstance) {
       const qtyNumber = Math.max(Number(qty) || 1, 1);
       const flashIdNumber = flashId ? Number(flashId) : undefined;
 
-      const product = await fastify.prisma.products.findFirst({
+      let product = await fastify.prisma.products.findFirst({
         where: {
           id: itemId,
           status: { in: ["PUBLISHED", "AVAILABLE"] },
         },
       });
+
+      if (flashId) {
+        const productFlash = await fastify.prisma.flashSale.findFirst({
+          where: { id: Number(flashId) },
+          include: {
+            products: true,
+          },
+        });
+        product = productFlash?.products as any;
+      }
 
       if (!product) {
         return reply.status(404).send({ message: "Product not found." });
@@ -434,7 +448,8 @@ export default async function (fastify: FastInstance) {
 
       const basePrice = Number(product.price);
       const flashDiscount = computeFlashDiscount(basePrice, flashSale).discount;
-      const totalBeforePromo = Math.max(basePrice - flashDiscount, 0) * qtyNumber;
+      const totalBeforePromo =
+        Math.max(basePrice - flashDiscount, 0) * qtyNumber;
 
       const promotions = await fastify.prisma.promotionsCode.findMany({
         where: {
@@ -450,15 +465,21 @@ export default async function (fastify: FastInstance) {
           ...({} as any),
         };
 
-        const isProductOk = !promotion.productId || promotion.productId === product.id;
-        const isCategoryOk = !promotion.categoryId || promotion.categoryId === product.categoryId;
+        const isProductOk =
+          !promotion.productId || promotion.productId === product.id;
+        const isCategoryOk =
+          !promotion.categoryId || promotion.categoryId === product.categoryId;
         const isSubCategoryOk =
-          !promotion.subCategoryId || promotion.subCategoryId === product.subCategoryId;
+          !promotion.subCategoryId ||
+          promotion.subCategoryId === product.subCategoryId;
         const isUserOk = !promotion.userId || promotion.userId === req.user?.id;
         const isFlashOk = !flashSale || promotion.allowFlashSale;
         const minTrx = Number(promotion.minTrx ?? 0);
         const isMinTrxOk = minTrx <= 0 || totalBeforePromo >= minTrx;
-        const remainingUse = Math.max((promotion.maxUse ?? 0) - (promotion.used ?? 0), 0);
+        const remainingUse = Math.max(
+          (promotion.maxUse ?? 0) - (promotion.used ?? 0),
+          0,
+        );
         const isRemainingOk = promotion.maxUse <= 0 || remainingUse > 0;
 
         const valid =
@@ -472,8 +493,10 @@ export default async function (fastify: FastInstance) {
 
         let invalidReason: string | null = null;
         if (!isProductOk) invalidReason = "Hanya untuk produk tertentu.";
-        else if (!isCategoryOk) invalidReason = "Hanya untuk kategori tertentu.";
-        else if (!isSubCategoryOk) invalidReason = "Hanya untuk sub kategori tertentu.";
+        else if (!isCategoryOk)
+          invalidReason = "Hanya untuk kategori tertentu.";
+        else if (!isSubCategoryOk)
+          invalidReason = "Hanya untuk sub kategori tertentu.";
         else if (!isUserOk) invalidReason = "Hanya untuk user tertentu.";
         else if (!isFlashOk) invalidReason = "Tidak bisa digabung flash sale.";
         else if (!isMinTrxOk)
@@ -522,7 +545,8 @@ export default async function (fastify: FastInstance) {
         });
       }
 
-      const { itemId, paymentMethod, qty, userData, flashId, promoCode } = parsed.data;
+      const { itemId, paymentMethod, qty, userData, flashId, promoCode } =
+        parsed.data;
 
       const payment = await fastify.prisma.paymentMethod.findFirst({
         where: { id: paymentMethod, paymentVisibility: "active" },
@@ -715,7 +739,10 @@ export default async function (fastify: FastInstance) {
       }
 
       const basePrice = Number(product.price);
-      const { discount: flashDiscount } = computeFlashDiscount(basePrice, flashSale);
+      const { discount: flashDiscount } = computeFlashDiscount(
+        basePrice,
+        flashSale,
+      );
       const priceAfterFlash = Math.max(basePrice - flashDiscount, 0);
       const promotionCheck = await findApplicablePromotion(fastify, {
         promoCode,
@@ -776,7 +803,10 @@ export default async function (fastify: FastInstance) {
           returnUrl,
         });
       } catch (error: any) {
-        req.log.error({ error, paymentMethod: payment.methodCode, merchantOrderId }, "Failed to create Duitku payment");
+        req.log.error(
+          { error, paymentMethod: payment.methodCode, merchantOrderId },
+          "Failed to create Duitku payment",
+        );
 
         const message =
           error?.Message ??
@@ -806,7 +836,8 @@ export default async function (fastify: FastInstance) {
               callbackUrl,
               returnUrl,
             },
-            responsePayload: error?.responsePayload ?? error?.data ?? error ?? null,
+            responsePayload:
+              error?.responsePayload ?? error?.data ?? error ?? null,
             errorStack: error?.stack ?? null,
           });
         }
@@ -920,7 +951,10 @@ export default async function (fastify: FastInstance) {
       }
 
       const basePrice = Number(product.price);
-      const { discount: flashDiscount } = computeFlashDiscount(basePrice, flashSale);
+      const { discount: flashDiscount } = computeFlashDiscount(
+        basePrice,
+        flashSale,
+      );
       const priceAfterFlash = Math.max(basePrice - flashDiscount, 0);
       const promotionCheck = await findApplicablePromotion(fastify, {
         promoCode,

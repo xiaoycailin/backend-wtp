@@ -24,6 +24,7 @@ import badgeRoute from "./routes/badge.route";
 import leaderboardRoute from "./routes/leaderboard.route";
 import bannerRoute from "./routes/banner.route";
 import cachePlugin from "./plugins/cache";
+import promotionRoute from "./routes/promotion.route";
 
 const apiRoutesPlugin: FastifyPluginAsync = async (
   instance: FastifyInstance,
@@ -42,6 +43,7 @@ const apiRoutesPlugin: FastifyPluginAsync = async (
   await instance.register(badgeRoute);
   await instance.register(leaderboardRoute);
   await instance.register(bannerRoute);
+  await instance.register(promotionRoute);
   await instance.register(githubWebhookRoute);
 };
 

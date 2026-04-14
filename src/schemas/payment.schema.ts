@@ -11,10 +11,11 @@ export const paymentMethodCreateSchema = z.object({
   group: z.enum(["qris", "va", "retail", "ewallet"]).nullable().optional(),
 });
 
-export const paymentMethodUpdateSchema = paymentMethodCreateSchema.partial().refine(
-  (value) => Object.keys(value).length > 0,
-  { message: "At least one field must be provided." },
-);
+export const paymentMethodUpdateSchema = paymentMethodCreateSchema
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided.",
+  });
 
 const userDataSchema = z
   .object({
@@ -39,7 +40,7 @@ export const paymentPurchaseSchema = z.object({
   paymentMethod: z.number().int().positive(),
   qty: z.number().int().positive().max(10),
   email: z.string().trim().email(),
-  phoneNumber: z.string().trim().min(8).max(20).optional(),
+  phoneNumber: z.string().trim().optional(),
   userData: userDataSchema.default({}),
   flashId: z.number().int().positive().optional(),
   promoCode: z.string().trim().optional(),

@@ -25,6 +25,7 @@ const badge_route_1 = __importDefault(require("./routes/badge.route"));
 const leaderboard_route_1 = __importDefault(require("./routes/leaderboard.route"));
 const banner_route_1 = __importDefault(require("./routes/banner.route"));
 const cache_1 = __importDefault(require("./plugins/cache"));
+const promotion_route_1 = __importDefault(require("./routes/promotion.route"));
 const apiRoutesPlugin = async (instance) => {
     await instance.register(user_route_1.default);
     await instance.register(category_route_1.default);
@@ -40,6 +41,7 @@ const apiRoutesPlugin = async (instance) => {
     await instance.register(badge_route_1.default);
     await instance.register(leaderboard_route_1.default);
     await instance.register(banner_route_1.default);
+    await instance.register(promotion_route_1.default);
     await instance.register(github_webhook_route_1.default);
 };
 const buildServer = async () => {

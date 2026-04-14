@@ -101,7 +101,11 @@ async function validateRelations(
 
 function buildPromotionPayload(data: z.infer<typeof PromotionSchema>) {
   const expiredDate = normalizeDate(data.expiredDate ?? null);
-  if (expiredDate && typeof expiredDate === "object" && "error" in expiredDate) {
+  if (
+    expiredDate &&
+    typeof expiredDate === "object" &&
+    "error" in expiredDate
+  ) {
     return expiredDate;
   }
 
@@ -155,6 +159,49 @@ export default async function promotionRoute(fastify: FastInstance) {
       }
 
       return reply.send(convertBigIntAndDate(promotion));
+    },
+  });
+  fastify.post("/promotions/apply", {
+    handler: async (req: FastifyRequest, reply: FastifyReply) => {
+      const { id, itemId, flashId } = req.body as any;
+      const promoExist = await fastify.prisma.promotionsCode.findFirst({
+        where: { id },
+      });
+
+      if (!promoExist)
+        return reply.status(404).send({ message: "Kode promo tidak tersedia" });
+
+      if (flashId) {
+        const flashSaleExist = await fastify.prisma.flashSale.findFirst({
+          where: {
+            OR: [
+              {
+                productId: typeof itemId == "string" ? itemId : undefined,
+              },
+              {
+                id: typeof flashId == "number" ? flashId : undefined,
+              },
+              {
+                productId: typeof flashId == "string" ? flashId : undefined,
+              },
+            ],
+          },
+        });
+
+        if (flashSaleExist && !promoExist.allowFlashSale)
+          return reply.status(406).send({
+            message: "Tidak bisa digabung flash sale.",
+          });
+
+        return reply.send({ message: "Kode promo berhasil di gunakan." });
+      }
+
+      if (!itemId && !promoExist)
+        return reply.status(406).send({
+          message: "Kode Promo tidak dapat di gunakan pada produk ini",
+        });
+
+      return reply.send({ message: "Kode promo berhasil di gunakan" });
     },
   });
 
