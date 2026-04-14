@@ -60,7 +60,22 @@ export default async function (fastify: FastInstance) {
         return reply.status(404).send({ message: "Transaction not found" });
       }
 
-      return reply.send(serializeData(transaction));
+      // Extract promo info from providerData
+      const providerData = transaction.providerData && typeof transaction.providerData === 'object' ? transaction.providerData as Record<string, any> : {};
+      const promoInfo = providerData.promotionId ? {
+        promotionId: providerData.promotionId,
+        promotionCode: providerData.promotionCode,
+        promotionDiscount: providerData.promotionDiscount,
+        flashDiscount: providerData.flashDiscount,
+        promotionUsageRestored: providerData.promotionUsageRestored,
+      } : null;
+
+      const enriched = {
+        ...transaction,
+        promo: promoInfo,
+      };
+
+      return reply.send(serializeData(enriched));
     },
   });
 
