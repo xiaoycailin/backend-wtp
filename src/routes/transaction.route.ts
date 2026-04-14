@@ -140,9 +140,26 @@ export default async function (fastify: FastInstance) {
         }),
       ]);
 
+      // Transform data to include promo info
+      const items = data.map((tx) => {
+        const providerData = tx.providerData && typeof tx.providerData === 'object' ? tx.providerData as Record<string, any> : {};
+        const promoInfo = providerData.promotionId ? {
+          promotionId: providerData.promotionId,
+          promotionCode: providerData.promotionCode,
+          promotionDiscount: providerData.promotionDiscount,
+          flashDiscount: providerData.flashDiscount,
+          promotionUsageRestored: providerData.promotionUsageRestored,
+        } : null;
+
+        return {
+          ...tx,
+          promo: promoInfo,
+        };
+      });
+
       return reply.send(
         serializeData({
-          items: data,
+          items,
           meta: {
             page: pageNum,
             limit: limitNum,
