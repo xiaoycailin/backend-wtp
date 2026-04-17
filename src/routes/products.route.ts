@@ -445,6 +445,7 @@ export default async function productRoutes(fastify: FastInstance) {
         thumbnails,
         conditionNotes,
         special,
+        provider,
       } = req.body as any;
 
       if (!title || !subCategoryId) {
@@ -478,6 +479,7 @@ export default async function productRoutes(fastify: FastInstance) {
           stock: stock ?? 1,
           thumbnails,
           conditionNotes,
+          provider: provider || "digiflazz",
           isSpecial: special,
         },
       });
@@ -519,6 +521,7 @@ export default async function productRoutes(fastify: FastInstance) {
         thumbnails,
         conditionNotes,
         status,
+        provider,
       } = req.body as any;
 
       const updateData: any = {};
@@ -547,6 +550,7 @@ export default async function productRoutes(fastify: FastInstance) {
       if (status !== undefined) updateData.status = status;
       if (conditionNotes !== undefined)
         updateData.conditionNotes = conditionNotes;
+      if (provider !== undefined) updateData.provider = provider;
 
       const updatedProduct = await fastify.prisma.products.update({
         where: { id: productId },

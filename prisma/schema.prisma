@@ -52,6 +52,32 @@ model PointEntry {
   createdAt DateTime @default(now())
 }
 
+enum BalanceTopupStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model BalanceTopup {
+  id              String             @id @default(uuid())
+  topupCode       String             @unique
+  user            User               @relation(fields: [userId], references: [id])
+  userId          String
+  amount          BigInt
+  fee             Float              @default(0)
+  totalAmount     BigInt
+  paymentStatus   BalanceTopupStatus @default(PENDING)
+  paymentMethod   PaymentMethod?     @relation(fields: [paymentMethodId], references: [id])
+  paymentMethodId Int?
+  paymentDetails  Json?
+  source          SourceType
+  providerRef     String?
+  notes           String?            @db.LongText
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  successAt       DateTime?
+}
+
 model User {
   id               String         @id @default(uuid())
   email            String         @unique
@@ -70,6 +96,7 @@ model User {
   userBalances     UserBalance[]
   moneyEntries     MoneyEntry[]
   pointEntries     PointEntry[]
+  balanceTopups    BalanceTopup[]
 }
 
 model LoginSession {
@@ -139,8 +166,51 @@ model SubCategory {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
 
+  inputs InputTypes[]
+
   @@index([categoryId], name: "idx_subcategory_categoryid")
   @@index([title], name: "idx_subcategory_name")
+}
+
+enum InputEnum {
+  text
+  number
+  tel
+  email
+  password
+}
+
+enum InputModel {
+  input
+  textarea
+  select
+}
+
+model InputTypes {
+  id Int @unique @default(autoincrement())
+
+  name  String
+  label String
+
+  subCategory   SubCategory? @relation(fields: [subCategoryId], references: [id])
+  subCategoryId String?
+
+  type  InputEnum
+  model InputModel
+
+  placeholder String?
+  options     Json?
+
+  icon String?
+
+  maskingForView Boolean @default(false)
+
+  createdAt DateTime @default(now())
+}
+
+enum ProductProvider {
+  manual
+  digiflazz
 }
 
 model Products {
@@ -174,6 +244,8 @@ model Products {
   transactions Transactions[]
   flashSales   FlashSale[]
 
+  provider ProductProvider @default(digiflazz)
+
   @@index([sellerUserId], name: "idx_products_seller")
   @@index([status], name: "idx_products_status")
   @@index([categoryId], name: "idx_products_category")
@@ -204,6 +276,7 @@ enum PaymentStatus {
   SUCCESS
   FAILED
   REFUND
+  EXPIRED
 }
 
 enum OrderStatus {
@@ -257,6 +330,8 @@ model Transactions {
 
 enum SourceType {
   DUITKU
+  MIDTRANS
+  BALANCE
 }
 
 enum FeeType {
@@ -274,6 +349,7 @@ enum PaymentGroup {
   va
   retail
   ewallet
+  balance
 }
 
 model PaymentMethod {
@@ -284,9 +360,12 @@ model PaymentMethod {
   thumbnail         String
   feeType           FeeType
   feeValue          Float
+  minAmount         Int?
+  maxAmount         Int?
   paymentVisibility PaymentVisibility
   group             PaymentGroup?
   transactions      Transactions[]
+  balanceTopups     BalanceTopup[]
 }
 
 enum BannerType {

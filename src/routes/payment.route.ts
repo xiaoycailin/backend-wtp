@@ -1,4 +1,4 @@
-import { DuitKu } from "../utils/payment";
+import { DuitKu, Midtrans } from "../utils/payment";
 import { FastInstance } from "../utils/fastify";
 import {
   authMiddleware,
@@ -17,6 +17,7 @@ import {
 import { createActivityLog } from "../utils/activity-log";
 import { createSystemLog } from "../utils/system-log";
 import { serializeData } from "../utils/json";
+import DigiflazzClient from "../plugins/digiflazz-api";
 
 function computeFlashDiscount(
   basePrice: number,
@@ -78,6 +79,220 @@ function computeFee(
     return (payment.feeValue * discountedPrice * qty) / 100;
   }
   return payment.feeValue;
+}
+
+export async function refundToUserBalance(params: {
+  tx: any;
+  userId?: string | null;
+  amount: number;
+  ref: string;
+  paymentMethodCode?: string | null;
+  paymentSource?: string | null;
+  meta?: Record<string, any>;
+}) {
+  console.log("params Refund: ==>>> ", params);
+
+  const { tx, userId, amount, ref, paymentMethodCode, paymentSource, meta } =
+    params;
+  if (!userId || amount <= 0) return;
+
+  const normalizedCode = (paymentMethodCode ?? "").toLowerCase();
+  const balanceType =
+    paymentSource === "BALANCE" && normalizedCode.includes("point")
+      ? "POINTS"
+      : "WALLET";
+
+  const balanceAmount = balanceType === "POINTS" ? amount : BigInt(amount);
+
+  await tx.userBalance.upsert({
+    where: {
+      userId_type: {
+        userId,
+        type: balanceType,
+      },
+    },
+    update: {
+      amount: {
+        increment: balanceAmount,
+      },
+    },
+    create: {
+      userId,
+      type: balanceType,
+      amount: balanceAmount,
+    },
+  });
+
+  const entryMeta = {
+    reason: "digiflazz_failed_refund",
+    refundedFrom: paymentSource,
+    paymentMethodCode,
+    amount,
+    ...meta,
+  };
+
+  if (balanceType === "POINTS") {
+    await tx.pointEntry.create({
+      data: {
+        userId,
+        amount,
+        ref,
+        meta: entryMeta as any,
+      },
+    });
+  } else {
+    await tx.moneyEntry.create({
+      data: {
+        userId,
+        amount: BigInt(amount),
+        ref,
+        meta: entryMeta as any,
+      },
+    });
+  }
+}
+
+async function processSuccessfulOrder(params: {
+  fastify: FastInstance;
+  tx: any;
+  transaction: any;
+}) {
+  const { fastify, tx, transaction } = params;
+  const provider = transaction.product?.provider ?? "digiflazz";
+
+  if (provider !== "digiflazz") {
+    fastify.log.info(
+      { trxId: transaction.trxId, provider },
+      "Manual provider detected, skipping Digiflazz order creation",
+    );
+    return;
+  }
+
+  const df = new DigiflazzClient();
+  const userData = (transaction.userAccountData as any) ?? {};
+
+  if (!transaction.skuCode) {
+    await tx.transactions.update({
+      where: { id: transaction.id },
+      data: {
+        orderStatus: "FAILED",
+      },
+    });
+
+    await restorePromotionUsage(tx, transaction);
+
+    await tx.products.update({
+      where: { id: transaction.productId ?? "0" },
+      data: {
+        stock: {
+          increment: transaction.quantity,
+        },
+      },
+    });
+
+    if (transaction.flashSaleId) {
+      await tx.flashSale.update({
+        where: { id: transaction.flashSaleId },
+        data: {
+          stock: {
+            increment: transaction.quantity,
+          },
+        },
+      });
+    }
+
+    await refundToUserBalance({
+      tx,
+      userId: transaction.userId,
+      amount: Number(transaction.totalPrice ?? 0),
+      ref: transaction.trxId,
+      paymentMethodCode: transaction.paymentMethod?.methodCode ?? null,
+      paymentSource: transaction.paymentMethod?.source ?? null,
+      meta: {
+        transactionId: transaction.id,
+        productId: transaction.productId,
+        reason: "missing_sku_code",
+      },
+    });
+
+    return;
+  }
+
+  try {
+    const requestTrx = await df.prepaid.topup(
+      transaction.skuCode,
+      `${userData.primary_id ?? ""}${userData.server_id ?? ""}`,
+      transaction.trxId,
+    );
+    fastify.log.info(requestTrx, "TRX DIGIFLAZZ");
+  } catch (error: any) {
+    fastify.log.error(error, "something error");
+
+    await tx.transactions.update({
+      where: { id: transaction.id },
+      data: {
+        orderStatus: "FAILED",
+      },
+    });
+
+    await restorePromotionUsage(tx, transaction);
+
+    await tx.products.update({
+      where: { id: transaction.productId ?? "0" },
+      data: {
+        stock: {
+          increment: transaction.quantity,
+        },
+      },
+    });
+
+    if (transaction.flashSaleId) {
+      await tx.flashSale.update({
+        where: { id: transaction.flashSaleId },
+        data: {
+          stock: {
+            increment: transaction.quantity,
+          },
+        },
+      });
+    }
+
+    await refundToUserBalance({
+      tx,
+      userId: transaction.userId,
+      amount: Number(transaction.totalPrice ?? 0),
+      ref: transaction.trxId,
+      paymentMethodCode: transaction.paymentMethod?.methodCode ?? null,
+      paymentSource: transaction.paymentMethod?.source ?? null,
+      meta: {
+        transactionId: transaction.id,
+        productId: transaction.productId,
+      },
+    });
+
+    if (error?.provider || error?.statusCode) {
+      await createSystemLog(fastify, {
+        type: "third_party_error",
+        source: "digiflazz.create_order",
+        message:
+          error?.data?.message ??
+          error?.message ??
+          "Gagal kirim order ke Digiflazz",
+        statusCode: error?.statusCode ?? 502,
+        trxId: transaction.trxId,
+        provider: error?.provider ?? "digiflazz",
+        requestPayload: error?.requestPayload ?? {
+          skuCode: transaction.skuCode,
+          customerNo: `${userData.primary_id ?? ""}${userData.server_id ?? ""}`,
+          refId: transaction.trxId,
+        },
+        responsePayload: error?.responsePayload ?? error?.data ?? error ?? null,
+        errorStack: error?.stack ?? null,
+      });
+    }
+
+    return;
+  }
 }
 
 function requireAdmin(req: any, reply: any) {
@@ -684,6 +899,7 @@ export default async function (fastify: FastInstance) {
       } = parsed.data;
 
       const duitku = new DuitKu();
+      const midtrans = new Midtrans();
       const merchantOrderId = `M-${Date.now().toString(36).toUpperCase()}${Math.random()
         .toString(36)
         .substring(2, 5)
@@ -765,14 +981,21 @@ export default async function (fastify: FastInstance) {
       const fee = Math.round(computeFee(payment, discountedPrice, qty));
       const totalPrice = Math.round(discountedPrice * qty + fee);
 
-      const callbackUrl = process.env.DUITKU_CALLBACK_URL;
-      const returnUrl = process.env.DUITKU_RETURN_URL;
-      if (!callbackUrl || !returnUrl) {
-        return reply.status(500).send({
-          message:
-            "DUITKU_CALLBACK_URL and DUITKU_RETURN_URL must be configured.",
+      if (payment.minAmount && totalPrice < payment.minAmount) {
+        return reply.status(400).send({
+          message: `Minimal transaksi ${payment.paymentName} adalah Rp ${Number(payment.minAmount).toLocaleString("id-ID")}.`,
         });
       }
+
+      if (payment.maxAmount && totalPrice > payment.maxAmount) {
+        return reply.status(400).send({
+          message: `Maksimal transaksi ${payment.paymentName} adalah Rp ${Number(payment.maxAmount).toLocaleString("id-ID")}.`,
+        });
+      }
+
+      const duitkuCallbackUrl = process.env.DUITKU_CALLBACK_URL;
+      const duitkuReturnUrl = process.env.DUITKU_RETURN_URL;
+      const midtransFinishUrl = process.env.MIDTRANS_FINISH_URL;
 
       const normalizedUserData = { ...userData } as Record<string, unknown>;
       try {
@@ -791,21 +1014,67 @@ export default async function (fastify: FastInstance) {
 
       let requestPayment: any;
       try {
-        requestPayment = await duitku.createPayment({
-          amount: totalPrice,
-          itemName: product.title,
-          quantity: qty,
-          merchantOrderId,
-          paymentMethod: payment.methodCode,
-          email,
-          phoneNumber,
-          callbackUrl,
-          returnUrl,
-        });
+        if (payment.source === "BALANCE") {
+          if (!req.user?.id) {
+            return reply.status(401).send({
+              message: "Silakan login terlebih dahulu untuk menggunakan saldo.",
+            });
+          }
+
+          requestPayment = {
+            source: "BALANCE",
+            methodCode: payment.methodCode,
+            paymentName: payment.paymentName,
+            amount: totalPrice,
+            status: "PAID",
+          };
+        } else if (payment.source === "DUITKU") {
+          if (!duitkuCallbackUrl || !duitkuReturnUrl) {
+            return reply.status(500).send({
+              message:
+                "DUITKU_CALLBACK_URL and DUITKU_RETURN_URL must be configured.",
+            });
+          }
+
+          requestPayment = await duitku.createPayment({
+            amount: totalPrice,
+            itemName: product.title,
+            quantity: qty,
+            merchantOrderId,
+            paymentMethod: payment.methodCode,
+            email,
+            phoneNumber,
+            callbackUrl: duitkuCallbackUrl,
+            returnUrl: duitkuReturnUrl,
+          });
+        } else if (payment.source === "MIDTRANS") {
+          requestPayment = await midtrans.createPayment(
+            {
+              orderId: merchantOrderId,
+              amount: totalPrice,
+              itemName: product.title,
+              quantity: qty,
+              paymentMethod: payment.methodCode,
+              email,
+              phoneNumber,
+              finishUrl: midtransFinishUrl,
+            },
+            process.env.MIDTRANS_IS_PRODUCTION === "true",
+          );
+        } else {
+          return reply.status(400).send({
+            message: `Payment source ${payment.source} belum didukung.`,
+          });
+        }
       } catch (error: any) {
         req.log.error(
-          { error, paymentMethod: payment.methodCode, merchantOrderId },
-          "Failed to create Duitku payment",
+          {
+            error,
+            paymentMethod: payment.methodCode,
+            paymentSource: payment.source,
+            merchantOrderId,
+          },
+          "Failed to create payment",
         );
 
         const message =
@@ -818,23 +1087,27 @@ export default async function (fastify: FastInstance) {
         if (error?.provider || error?.statusCode) {
           await createSystemLog(fastify, {
             type: "third_party_error",
-            source: "duitku.create_payment",
+            source:
+              payment.source === "MIDTRANS"
+                ? "midtrans.create_payment"
+                : "duitku.create_payment",
             message,
             statusCode: error?.statusCode ?? 502,
             method: req.method,
             url: req.url,
             trxId: merchantOrderId,
-            provider: error?.provider ?? "duitku",
+            provider:
+              error?.provider ??
+              (payment.source === "MIDTRANS" ? "midtrans" : "duitku"),
             requestPayload: error?.requestPayload ?? {
               amount: totalPrice,
               itemName: product.title,
               quantity: qty,
               merchantOrderId,
               paymentMethod: payment.methodCode,
+              paymentSource: payment.source,
               email,
               phoneNumber,
-              callbackUrl,
-              returnUrl,
             },
             responsePayload:
               error?.responsePayload ?? error?.data ?? error ?? null,
@@ -848,62 +1121,168 @@ export default async function (fastify: FastInstance) {
         });
       }
 
-      const transaction = await fastify.prisma.$transaction(async (tx) => {
-        if (promotionCheck.promotion) {
-          await tx.promotionsCode.update({
-            where: { id: promotionCheck.promotion.id },
-            data: {
-              used: {
-                increment: 1,
+      let transaction;
+      try {
+        transaction = await fastify.prisma.$transaction(async (tx) => {
+          if (promotionCheck.promotion) {
+            await tx.promotionsCode.update({
+              where: { id: promotionCheck.promotion.id },
+              data: {
+                used: {
+                  increment: 1,
+                },
               },
+            });
+          }
+
+          if (payment.source === "BALANCE") {
+            const balanceType = payment.methodCode
+              .toLowerCase()
+              .includes("point")
+              ? "POINTS"
+              : "WALLET";
+
+            const userBalance = await tx.userBalance.findUnique({
+              where: {
+                userId_type: {
+                  userId: req.user!.id,
+                  type: balanceType,
+                },
+              },
+            });
+
+            const currentAmount = Number(userBalance?.amount ?? 0);
+            if (currentAmount < totalPrice) {
+              throw Object.assign(
+                new Error(
+                  balanceType === "POINTS"
+                    ? `T-Points kamu tidak cukup. Butuh ${totalPrice.toLocaleString("id-ID")}, tersedia ${currentAmount.toLocaleString("id-ID")}.`
+                    : `Saldo T-Gems kamu tidak cukup. Butuh Rp ${totalPrice.toLocaleString("id-ID")}, tersedia Rp ${currentAmount.toLocaleString("id-ID")}.`,
+                ),
+                { statusCode: 400 },
+              );
+            }
+
+            await tx.userBalance.upsert({
+              where: {
+                userId_type: {
+                  userId: req.user!.id,
+                  type: balanceType,
+                },
+              },
+              update: {
+                amount: {
+                  decrement: totalPrice,
+                },
+              },
+              create: {
+                userId: req.user!.id,
+                type: balanceType,
+                amount: 0,
+              },
+            });
+
+            const paymentMeta = {
+              trxId: merchantOrderId,
+              paymentMethodId: paymentMethod,
+              paymentMethodName: payment.paymentName,
+              productId: product.id,
+              productName: product.title,
+              totalPrice,
+              qty,
+            };
+
+            if (balanceType === "POINTS") {
+              await tx.pointEntry.create({
+                data: {
+                  userId: req.user!.id,
+                  amount: -totalPrice,
+                  ref: merchantOrderId,
+                  meta: paymentMeta as any,
+                },
+              });
+            } else {
+              await tx.moneyEntry.create({
+                data: {
+                  userId: req.user!.id,
+                  amount: BigInt(-totalPrice),
+                  ref: merchantOrderId,
+                  meta: paymentMeta as any,
+                },
+              });
+            }
+          }
+
+          const trx = await tx.transactions.create({
+            data: {
+              fee,
+              paymentMethodId: paymentMethod,
+              userAccountData: normalizedUserData as any,
+              trxId: merchantOrderId,
+              price: product.price,
+              discount: promoDiscount + flashDiscount,
+              discountedPrice,
+              totalPrice,
+              orderStatus:
+                payment.source === "BALANCE" ? "PENDING" : "WAIT_PAYMENT",
+              paymentStatus:
+                payment.source === "BALANCE" ? "SUCCESS" : "PENDING",
+              email,
+              phoneNumber,
+              quantity: qty,
+              paymentDetails: requestPayment,
+              productId: itemId,
+              flashSaleId: flashSale?.id ?? null,
+              skuCode: product.skuCode,
+              userId: req.user?.id,
+              successAt: payment.source === "BALANCE" ? new Date() : null,
+              providerData: {
+                promotionId: promotionCheck.promotion?.id ?? null,
+                promotionCode: promotionCheck.promotion?.code ?? null,
+                promotionDiscount: promoDiscount,
+                flashDiscount,
+                promotionUsageRestored: false,
+                balancePayment: payment.source === "BALANCE",
+              } as any,
             },
           });
-        }
 
-        const trx = await tx.transactions.create({
-          data: {
-            fee,
-            paymentMethodId: paymentMethod,
-            userAccountData: normalizedUserData as any,
-            trxId: merchantOrderId,
-            price: product.price,
-            discount: promoDiscount + flashDiscount,
-            discountedPrice,
-            totalPrice,
-            orderStatus: "WAIT_PAYMENT",
-            paymentStatus: "PENDING",
-            email,
-            phoneNumber,
-            quantity: qty,
-            paymentDetails: requestPayment,
-            productId: itemId,
-            flashSaleId: flashSale?.id ?? null,
-            skuCode: product.skuCode,
-            userId: req.user?.id,
-            providerData: {
-              promotionId: promotionCheck.promotion?.id ?? null,
-              promotionCode: promotionCheck.promotion?.code ?? null,
-              promotionDiscount: promoDiscount,
-              flashDiscount,
-              promotionUsageRestored: false,
-            } as any,
-          },
-        });
-
-        await tx.products.update({
-          data: { stock: { decrement: qty } },
-          where: { id: product.id },
-        });
-
-        if (flashSale?.id) {
-          await tx.flashSale.update({
-            where: { id: flashSale.id },
+          await tx.products.update({
             data: { stock: { decrement: qty } },
+            where: { id: product.id },
           });
-        }
 
-        return trx;
-      });
+          if (flashSale?.id) {
+            await tx.flashSale.update({
+              where: { id: flashSale.id },
+              data: { stock: { decrement: qty } },
+            });
+          }
+
+          if (payment.source === "BALANCE") {
+            await processSuccessfulOrder({
+              fastify,
+              tx,
+              transaction: {
+                ...trx,
+                product: {
+                  provider: product.provider,
+                },
+                paymentMethod: {
+                  methodCode: payment.methodCode,
+                  source: payment.source,
+                },
+              },
+            });
+          }
+
+          return trx;
+        });
+      } catch (error: any) {
+        return reply.status(error?.statusCode ?? 500).send({
+          message: error?.message ?? "Gagal memproses transaksi balance.",
+        });
+      }
 
       const trxResult = await fastify.prisma.transactions.findFirst({
         where: { id: transaction.id },
@@ -976,11 +1355,26 @@ export default async function (fastify: FastInstance) {
           paymentName: true,
           feeType: true,
           feeValue: true,
+          minAmount: true,
+          maxAmount: true,
         },
       });
 
       const prices = payments.map((pay) => {
         const fee = Math.round(computeFee(pay, discountedPrice, qty));
+        const totalPrice = Math.round(discountedPrice * qty + fee);
+
+        let valid = true;
+        let reason: string | null = null;
+
+        if (pay.minAmount && totalPrice < pay.minAmount) {
+          valid = false;
+          reason = `Minimal transaksi ${pay.paymentName} adalah Rp ${pay.minAmount.toLocaleString("id-ID")}`;
+        } else if (pay.maxAmount && totalPrice > pay.maxAmount) {
+          valid = false;
+          reason = `Maksimal transaksi ${pay.paymentName} adalah Rp ${pay.maxAmount.toLocaleString("id-ID")}`;
+        }
+
         return {
           id: pay.id,
           price: basePrice,
@@ -989,8 +1383,12 @@ export default async function (fastify: FastInstance) {
           discount: flashDiscount + promoDiscount,
           discounted_price: discountedPrice,
           fee,
-          total_price: Math.round(discountedPrice * qty + fee),
+          total_price: totalPrice,
           qty,
+          valid,
+          reason,
+          min_amount: pay.minAmount,
+          max_amount: pay.maxAmount,
         };
       });
 

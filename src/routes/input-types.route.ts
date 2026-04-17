@@ -14,6 +14,7 @@ const createInputSchema = z.object({
   options: z.any().optional().nullable(), // JSON array of {label,value}
   icon: z.string().max(50).optional().nullable(),
   maskingForView: z.boolean().optional().default(false),
+  subCategoryId: z.uuidv4(),
 });
 
 const updateInputSchema = createInputSchema.partial();
@@ -87,9 +88,11 @@ export default async function (fastify: FastInstance) {
       if (!parsed.success) {
         return reply.status(400).send({
           message: "Validation error",
-          errors: parsed.error.errors,
+          errors: parsed.error,
         });
       }
+
+      // console.log(parsed.data);
 
       const { subCategoryId, ...data } = parsed.data as any;
       if (!subCategoryId) {
@@ -133,7 +136,7 @@ export default async function (fastify: FastInstance) {
       if (!parsed.success) {
         return reply.status(400).send({
           message: "Validation error",
-          errors: parsed.error.errors,
+          errors: parsed.error,
         });
       }
 

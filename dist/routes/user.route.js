@@ -6,6 +6,7 @@ const authMiddleware_1 = require("../plugins/authMiddleware");
 const user_schema_1 = require("../schemas/user.schema");
 const hash_1 = require("../utils/hash");
 const token_1 = require("../utils/token");
+const payment_1 = require("../utils/payment");
 const convertBigIntAndDate = (val) => {
     if (typeof val === "bigint") {
         return val.toString();
@@ -138,89 +139,266 @@ async function userRoutes(fastify) {
             return reply.send((0, exports.convertBigIntAndDate)(user));
         },
     });
-    // POST /users/wallet/topup
-    fastify.post("/users/wallet/topup", {
+    fastify.post("/users/balance-topups", {
         preHandler: authMiddleware_1.authMiddleware,
-        schema: {
-            body: {
-                type: "object",
-                required: ["amount"],
-                properties: {
-                    amount: { type: "number", minimum: 1 },
-                    ref: { type: "string" },
-                    meta: { type: "object" },
-                },
-            },
-        },
         handler: async (req, reply) => {
             const user = req.user;
             if (!user?.id) {
                 return reply.status(401).send({ message: "Unauthorized" });
             }
-            const { amount, ref, meta } = req.body;
-            if (!Number.isFinite(amount) || amount <= 0) {
+            const { amount, paymentMethodId } = (req.body ?? {});
+            if (!Number.isFinite(amount) || Number(amount) <= 0) {
                 return reply
                     .status(400)
-                    .send({ message: "Amount harus lebih besar dari 0." });
+                    .send({ message: "Nominal topup tidak valid." });
             }
-            // konversi ke BigInt (minor unit, mis. rupiah)
-            const amountMinor = BigInt(Math.round(amount));
+            if (!paymentMethodId) {
+                return reply
+                    .status(400)
+                    .send({ message: "Metode pembayaran wajib dipilih." });
+            }
+            const paymentMethod = await fastify.prisma.paymentMethod.findFirst({
+                where: {
+                    id: Number(paymentMethodId),
+                    paymentVisibility: "active",
+                    source: { in: ["DUITKU", "MIDTRANS"] },
+                },
+            });
+            if (!paymentMethod) {
+                return reply
+                    .status(404)
+                    .send({ message: "Metode pembayaran topup tidak ditemukan." });
+            }
+            const nominal = Math.round(Number(amount));
+            const fee = paymentMethod.feeType === "percent"
+                ? Math.round((paymentMethod.feeValue * nominal) / 100)
+                : Math.round(paymentMethod.feeValue);
+            const totalAmount = nominal + fee;
+            const duitku = new payment_1.DuitKu();
+            const midtrans = new payment_1.Midtrans();
+            const topupCode = `TU-${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+            const duitkuBaseCallbackUrl = process.env.DUITKU_CALLBACK_URL;
+            const duitkuReturnUrl = process.env.DUITKU_RETURN_URL;
+            const midtransFinishUrl = process.env.MIDTRANS_FINISH_URL;
+            const duitkuCallbackUrl = duitkuBaseCallbackUrl?.replace("/callback/payment/duitku", "/callback/balance-topup/duitku");
+            let requestPayment;
             try {
-                const result = await fastify.prisma.$transaction(async (tx) => {
-                    // pastikan userBalance WALLET ada
-                    const existingBalance = await tx.userBalance.findFirst({
-                        where: {
-                            userId: user.id,
-                            type: "WALLET",
-                        },
-                    });
-                    if (!existingBalance) {
-                        // kalau belum ada, buat 0 dulu
-                        await tx.userBalance.create({
-                            data: {
-                                userId: user.id,
-                                type: "WALLET",
-                                amount: BigInt(0),
-                            },
+                if (paymentMethod.source === "DUITKU") {
+                    if (!duitkuCallbackUrl || !duitkuReturnUrl) {
+                        return reply.status(500).send({
+                            message: "DUITKU callback/return URL belum dikonfigurasi.",
                         });
                     }
-                    // catat entry topup di MoneyEntry
-                    const entry = await tx.moneyEntry.create({
-                        data: {
-                            userId: user.id,
-                            amount: amountMinor, // + kredit
-                            ref,
-                            meta,
-                        },
+                    requestPayment = await duitku.createPayment({
+                        amount: totalAmount,
+                        itemName: `Topup Saldo ${nominal.toLocaleString("id-ID")}`,
+                        quantity: 1,
+                        merchantOrderId: topupCode,
+                        paymentMethod: paymentMethod.methodCode,
+                        email: user.email,
+                        phoneNumber: "",
+                        callbackUrl: duitkuCallbackUrl,
+                        returnUrl: duitkuReturnUrl,
                     });
-                    // update saldo wallet (increment)
-                    const balance = await tx.userBalance.update({
-                        where: {
-                            userId_type: {
-                                userId: user.id,
-                                type: "WALLET",
-                            },
-                        },
-                        data: {
-                            amount: {
-                                increment: amountMinor,
-                            },
-                        },
-                    });
-                    return { balance, entry };
-                });
-                return reply.status(201).send({
-                    message: "Topup berhasil.",
-                    balance: result.balance,
-                    entry: result.entry,
+                }
+                else {
+                    requestPayment = await midtrans.createPayment({
+                        orderId: topupCode,
+                        amount: totalAmount,
+                        itemName: `Topup Saldo ${nominal.toLocaleString("id-ID")}`,
+                        quantity: 1,
+                        paymentMethod: paymentMethod.methodCode,
+                        email: user.email,
+                        phoneNumber: "",
+                        finishUrl: midtransFinishUrl,
+                    }, process.env.MIDTRANS_IS_PRODUCTION === "true");
+                }
+            }
+            catch (error) {
+                return reply.status(502).send({
+                    message: error?.message ?? "Gagal membuat pembayaran topup.",
                 });
             }
-            catch (err) {
-                req.log.error({ err }, "Wallet topup failed");
+            const topup = await fastify.prisma.balanceTopup.create({
+                data: {
+                    topupCode,
+                    userId: user.id,
+                    amount: BigInt(nominal),
+                    fee,
+                    totalAmount: BigInt(totalAmount),
+                    paymentMethodId: paymentMethod.id,
+                    paymentStatus: "PENDING",
+                    paymentDetails: requestPayment,
+                    source: paymentMethod.source,
+                    providerRef: requestPayment?.reference ?? requestPayment?.transaction_id ?? null,
+                },
+                include: {
+                    paymentMethod: true,
+                },
+            });
+            return reply.status(201).send((0, exports.convertBigIntAndDate)(topup));
+        },
+    });
+    fastify.get("/users/balance-topups", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            const user = req.user;
+            if (!user?.id)
+                return reply.status(401).send({ message: "Unauthorized" });
+            const { page = "1", limit = "10" } = (req.query ?? {});
+            const pageNumber = Math.max(Number(page) || 1, 1);
+            const limitNumber = Math.min(Math.max(Number(limit) || 10, 1), 100);
+            const skip = (pageNumber - 1) * limitNumber;
+            const [items, total] = await Promise.all([
+                fastify.prisma.balanceTopup.findMany({
+                    where: { userId: user.id },
+                    include: { paymentMethod: true },
+                    orderBy: { createdAt: "desc" },
+                    skip,
+                    take: limitNumber,
+                }),
+                fastify.prisma.balanceTopup.count({ where: { userId: user.id } }),
+            ]);
+            return reply.send((0, exports.convertBigIntAndDate)({
+                items,
+                meta: {
+                    total,
+                    page: pageNumber,
+                    limit: limitNumber,
+                    totalPages: Math.max(Math.ceil(total / limitNumber), 1),
+                },
+            }));
+        },
+    });
+    fastify.get("/users/balance-topups/:invoiceId", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            const user = req.user;
+            if (!user?.id)
+                return reply.status(401).send({ message: "Unauthorized" });
+            const data = await fastify.prisma.balanceTopup.findFirst({
+                where: { topupCode: req.params.invoiceId },
+                include: { paymentMethod: true },
+            });
+            return reply.send((0, exports.convertBigIntAndDate)(data));
+        },
+    });
+    fastify.get("/users/balance-history", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            const user = req.user;
+            if (!user?.id)
+                return reply.status(401).send({ message: "Unauthorized" });
+            const { page = "1", limit = "10", type = "ALL", } = (req.query ?? {});
+            const pageNumber = Math.max(Number(page) || 1, 1);
+            const limitNumber = Math.min(Math.max(Number(limit) || 10, 1), 100);
+            const skip = (pageNumber - 1) * limitNumber;
+            const moneyItems = type === "POINTS"
+                ? []
+                : (await fastify.prisma.moneyEntry.findMany({
+                    where: { userId: user.id },
+                    orderBy: { createdAt: "desc" },
+                })).map((item) => ({ ...item, entryType: "WALLET" }));
+            const pointItems = type === "WALLET"
+                ? []
+                : (await fastify.prisma.pointEntry.findMany({
+                    where: { userId: user.id },
+                    orderBy: { createdAt: "desc" },
+                })).map((item) => ({ ...item, entryType: "POINTS" }));
+            const merged = [...moneyItems, ...pointItems].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            const items = merged.slice(skip, skip + limitNumber);
+            const total = merged.length;
+            return reply.send((0, exports.convertBigIntAndDate)({
+                items,
+                meta: {
+                    total,
+                    page: pageNumber,
+                    limit: limitNumber,
+                    totalPages: Math.max(Math.ceil(total / limitNumber), 1),
+                },
+            }));
+        },
+    });
+    fastify.post("/admin/users/:id/balance-adjust", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            if (!ensureAdmin(req.user, reply))
+                return;
+            const { id } = req.params;
+            const { type, amount, note } = (req.body ?? {});
+            if (!type || !["WALLET", "POINTS"].includes(type)) {
+                return reply.status(400).send({ message: "Tipe balance tidak valid." });
+            }
+            if (!Number.isFinite(amount) || Number(amount) === 0) {
                 return reply
-                    .status(500)
-                    .send({ message: "Terjadi kesalahan saat topup saldo." });
+                    .status(400)
+                    .send({ message: "Nominal adjustment tidak valid." });
             }
+            const numericAmount = Math.round(Number(amount));
+            const result = await fastify.prisma.$transaction(async (tx) => {
+                await tx.userBalance.upsert({
+                    where: { userId_type: { userId: id, type } },
+                    update: { amount: { increment: numericAmount } },
+                    create: { userId: id, type, amount: numericAmount },
+                });
+                if (type === "POINTS") {
+                    await tx.pointEntry.create({
+                        data: {
+                            userId: id,
+                            amount: numericAmount,
+                            ref: `ADMIN-ADJ-${Date.now()}`,
+                            meta: {
+                                note,
+                                actorUserId: req.user?.id,
+                                type: "ADMIN_ADJUSTMENT",
+                            },
+                        },
+                    });
+                }
+                else {
+                    await tx.moneyEntry.create({
+                        data: {
+                            userId: id,
+                            amount: BigInt(numericAmount),
+                            ref: `ADMIN-ADJ-${Date.now()}`,
+                            meta: {
+                                note,
+                                actorUserId: req.user?.id,
+                                type: "ADMIN_ADJUSTMENT",
+                            },
+                        },
+                    });
+                }
+                return tx.user.findUnique({
+                    where: { id },
+                    select: { id: true, userBalances: true },
+                });
+            });
+            return reply.send((0, exports.convertBigIntAndDate)(result));
+        },
+    });
+    fastify.get("/admin/balance-topups", {
+        preHandler: authMiddleware_1.authMiddleware,
+        handler: async (req, reply) => {
+            if (!ensureAdmin(req.user, reply))
+                return;
+            const { status = "", from = "", to = "", } = (req.query ?? {});
+            const items = await fastify.prisma.balanceTopup.findMany({
+                where: {
+                    ...(status ? { paymentStatus: status } : {}),
+                    ...(from || to
+                        ? {
+                            createdAt: {
+                                ...(from ? { gte: new Date(from) } : {}),
+                                ...(to ? { lte: new Date(to) } : {}),
+                            },
+                        }
+                        : {}),
+                },
+                include: { user: true, paymentMethod: true },
+                orderBy: { createdAt: "desc" },
+            });
+            return reply.send((0, exports.convertBigIntAndDate)(items));
         },
     });
     // POST /users/auth/logout

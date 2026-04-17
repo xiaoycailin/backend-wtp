@@ -3,12 +3,17 @@ import { z } from "zod";
 export const paymentMethodCreateSchema = z.object({
   methodCode: z.string().trim().min(1),
   paymentName: z.string().trim().min(1),
-  source: z.enum(["DUITKU"]),
+  source: z.enum(["DUITKU", "MIDTRANS", "BALANCE"]),
   thumbnail: z.string().url(),
   feeType: z.enum(["flat", "percent"]),
   feeValue: z.number().min(0),
+  minAmount: z.number().int().min(0).nullable().optional(),
+  maxAmount: z.number().int().min(0).nullable().optional(),
   paymentVisibility: z.enum(["active", "nonactive"]),
-  group: z.enum(["qris", "va", "retail", "ewallet"]).nullable().optional(),
+  group: z
+    .enum(["qris", "va", "retail", "ewallet", "balance"])
+    .nullable()
+    .optional(),
 });
 
 export const paymentMethodUpdateSchema = paymentMethodCreateSchema

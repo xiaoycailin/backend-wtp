@@ -105,7 +105,7 @@ export default async function (fastify: FastInstance) {
   fastify.get("/category/sub/:dynamic", {
     handler: async (req, reply) => {
       const { dynamic } = req.params as { dynamic: string };
-      const { productInclude } = req.query as any;
+      const { productInclude, inputConfig } = req.query as any;
 
       const key = dynamic.trim();
 
@@ -114,6 +114,8 @@ export default async function (fastify: FastInstance) {
           message: "Invalid parameter.",
         });
       }
+
+      // console.log(inputConfig === "true");
 
       const subCategories = await fastify.prisma.subCategory.findMany({
         where: {
@@ -145,6 +147,7 @@ export default async function (fastify: FastInstance) {
                   },
                 }
               : false,
+          inputs: inputConfig === "true",
         },
       });
 

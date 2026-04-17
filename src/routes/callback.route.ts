@@ -4,8 +4,7 @@ import { createHash, createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
 import DigiflazzClient from "../plugins/digiflazz-api";
 import { createSystemLog } from "../utils/system-log";
-import { restorePromotionUsage } from "./payment.route";
-
+import { refundToUserBalance, restorePromotionUsage } from "./payment.route";
 // ─── Duitku ──────────────────────────────────────────────────────────────────
 
 function verifyDuitkuSignature(
@@ -39,6 +38,82 @@ const DuitkuCallbackSchema = z.object({
 });
 
 type DuitkuCallbackBody = z.infer<typeof DuitkuCallbackSchema>;
+
+const MidtransCallbackSchema = z.object({
+  order_id: z.string().min(1),
+  status_code: z.string().min(1),
+  gross_amount: z.string().min(1),
+  signature_key: z.string().min(1),
+  transaction_status: z.string().min(1),
+  fraud_status: z.string().optional(),
+  payment_type: z.string().optional(),
+  transaction_id: z.string().optional(),
+  transaction_time: z.string().optional(),
+  expiry_time: z.string().optional(),
+  va_numbers: z.array(z.any()).optional(),
+  permata_va_number: z.string().optional(),
+  bill_key: z.string().optional(),
+  biller_code: z.string().optional(),
+  pdf_url: z.string().optional(),
+});
+
+type MidtransCallbackBody = z.infer<typeof MidtransCallbackSchema>;
+
+function verifyMidtransSignature(
+  body: MidtransCallbackBody,
+  serverKey: string,
+) {
+  const rawSignature = `${body.order_id}${body.status_code}${body.gross_amount}${serverKey}`;
+  const expectedSignature = createHash("sha512")
+    .update(rawSignature)
+    .digest("hex");
+  return expectedSignature === body.signature_key;
+}
+
+async function creditWalletTopup(tx: any, topup: any) {
+  if (topup.paymentStatus === "SUCCESS") return;
+
+  await tx.balanceTopup.update({
+    where: { id: topup.id },
+    data: {
+      paymentStatus: "SUCCESS",
+      successAt: new Date(),
+    },
+  });
+
+  await tx.userBalance.upsert({
+    where: {
+      userId_type: {
+        userId: topup.userId,
+        type: "WALLET",
+      },
+    },
+    update: {
+      amount: {
+        increment: topup.amount,
+      },
+    },
+    create: {
+      userId: topup.userId,
+      type: "WALLET",
+      amount: topup.amount,
+    },
+  });
+
+  await tx.moneyEntry.create({
+    data: {
+      userId: topup.userId,
+      amount: topup.amount,
+      ref: topup.topupCode,
+      meta: {
+        type: "BALANCE_TOPUP",
+        topupId: topup.id,
+        topupCode: topup.topupCode,
+        paymentMethodId: topup.paymentMethodId,
+      } as any,
+    },
+  });
+}
 
 // ─── Digiflazz ───────────────────────────────────────────────────────────────
 
@@ -122,6 +197,53 @@ export default async function (fastify: FastInstance) {
     },
   );
 
+  fastify.post("/callback/balance-topup/duitku", {
+    handler: async (req, reply) => {
+      const parseResult = DuitkuCallbackSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({ message: "Invalid payload" });
+      }
+
+      const body = parseResult.data;
+      const merchantCode = process.env.MERCH_ID;
+      const apiKey = process.env.API_KEY_DUITKU;
+      if (
+        !merchantCode ||
+        !apiKey ||
+        !verifyDuitkuSignature(body, merchantCode, apiKey)
+      ) {
+        return reply.status(401).send({ message: "Invalid signature" });
+      }
+
+      await fastify.prisma.$transaction(async (tx) => {
+        const topup = await tx.balanceTopup.findFirst({
+          where: { topupCode: body.merchantOrderId },
+        });
+        if (!topup) return;
+        if (body.resultCode === "00") {
+          await creditWalletTopup(tx, topup);
+        } else if (topup.paymentStatus !== "FAILED") {
+          await tx.balanceTopup.update({
+            where: { id: topup.id },
+            data: {
+              paymentStatus: "FAILED",
+              notes: `Duitku payment failed (${body.resultCode})`,
+              paymentDetails: {
+                ...(topup.paymentDetails as any),
+                source: "DUITKU",
+                callbackStatus: body.resultCode,
+                callbackReference: body.reference,
+                rawCallback: body,
+              } as any,
+            },
+          });
+        }
+      });
+
+      return reply.send({ message: "OK" });
+    },
+  });
+
   // ═══════════════════════════════════════════════════════════════════════════
   //  Duitku Callback (kode existing, tidak diubah)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -190,6 +312,19 @@ export default async function (fastify: FastInstance) {
               paymentStatus: "PENDING",
               orderStatus: "WAIT_PAYMENT",
             },
+            include: {
+              product: {
+                select: {
+                  provider: true,
+                },
+              },
+              paymentMethod: {
+                select: {
+                  methodCode: true,
+                  source: true,
+                },
+              },
+            },
           });
 
           // 4. Idempotency check
@@ -250,76 +385,99 @@ export default async function (fastify: FastInstance) {
               "Payment success",
             );
 
-            // 6. Proces to digiflazz
-            const df = new DigiflazzClient();
-            const userData = transaction.userAccountData as any;
+            // 6. Process berdasarkan provider product
+            const provider = transaction.product?.provider ?? "digiflazz";
 
-            if (transaction.skuCode) {
-              try {
-                const requestTrx = await df.prepaid.topup(
-                  transaction.skuCode,
-                  `${userData.primary_id}${userData.server_id}`,
-                  transaction.trxId,
-                );
-                fastify.log.info(requestTrx, "TRX DIGIFLAZZ");
-              } catch (error: any) {
-                fastify.log.error(error, "something error");
+            if (provider === "digiflazz") {
+              const df = new DigiflazzClient();
+              const userData = transaction.userAccountData as any;
 
-                await tx.transactions.update({
-                  where: { id: transaction.id },
-                  data: {
-                    orderStatus: "FAILED",
-                  },
-                });
+              if (transaction.skuCode) {
+                try {
+                  const requestTrx = await df.prepaid.topup(
+                    transaction.skuCode,
+                    `${userData.primary_id}${userData.server_id}`,
+                    transaction.trxId,
+                  );
+                  fastify.log.info(requestTrx, "TRX DIGIFLAZZ");
+                } catch (error: any) {
+                  fastify.log.error(error, "something error");
 
-                await restorePromotionUsage(tx, transaction);
-
-                await tx.products.update({
-                  where: { id: transaction.productId ?? "0" },
-                  data: {
-                    stock: {
-                      increment: transaction.quantity,
+                  await tx.transactions.update({
+                    where: { id: transaction.id },
+                    data: {
+                      orderStatus: "FAILED",
                     },
-                  },
-                });
+                  });
 
-                if (transaction.flashSaleId) {
-                  await tx.flashSale.update({
-                    where: { id: transaction.flashSaleId },
+                  await restorePromotionUsage(tx, transaction);
+
+                  await tx.products.update({
+                    where: { id: transaction.productId ?? "0" },
                     data: {
                       stock: {
                         increment: transaction.quantity,
                       },
                     },
                   });
-                }
 
-                if (error?.provider || error?.statusCode) {
-                  await createSystemLog(fastify, {
-                    type: "third_party_error",
-                    source: "digiflazz.create_order",
-                    message:
-                      error?.data?.message ??
-                      error?.message ??
-                      "Gagal kirim order ke Digiflazz",
-                    statusCode: error?.statusCode ?? 502,
-                    method: req.method,
-                    url: req.url,
-                    trxId: transaction.trxId,
-                    provider: error?.provider ?? "digiflazz",
-                    requestPayload: error?.requestPayload ?? {
-                      skuCode: transaction.skuCode,
-                      customerNo: `${userData.primary_id}${userData.server_id}`,
-                      refId: transaction.trxId,
+                  if (transaction.flashSaleId) {
+                    await tx.flashSale.update({
+                      where: { id: transaction.flashSaleId },
+                      data: {
+                        stock: {
+                          increment: transaction.quantity,
+                        },
+                      },
+                    });
+                  }
+
+                  await refundToUserBalance({
+                    tx,
+                    userId: transaction.userId,
+                    amount: Number(transaction.totalPrice ?? 0),
+                    ref: transaction.trxId,
+                    paymentMethodCode:
+                      transaction.paymentMethod?.methodCode ?? null,
+                    paymentSource: transaction.paymentMethod?.source ?? null,
+                    meta: {
+                      transactionId: transaction.id,
+                      productId: transaction.productId,
                     },
-                    responsePayload:
-                      error?.responsePayload ?? error?.data ?? error ?? null,
-                    errorStack: error?.stack ?? null,
                   });
+
+                  if (error?.provider || error?.statusCode) {
+                    await createSystemLog(fastify, {
+                      type: "third_party_error",
+                      source: "digiflazz.create_order",
+                      message:
+                        error?.data?.message ??
+                        error?.message ??
+                        "Gagal kirim order ke Digiflazz",
+                      statusCode: error?.statusCode ?? 502,
+                      method: req.method,
+                      url: req.url,
+                      trxId: transaction.trxId,
+                      provider: error?.provider ?? "digiflazz",
+                      requestPayload: error?.requestPayload ?? {
+                        skuCode: transaction.skuCode,
+                        customerNo: `${userData.primary_id}${userData.server_id}`,
+                        refId: transaction.trxId,
+                      },
+                      responsePayload:
+                        error?.responsePayload ?? error?.data ?? error ?? null,
+                      errorStack: error?.stack ?? null,
+                    });
+                  }
                 }
+              } else {
+                fastify.log.error("skuCode not found");
               }
             } else {
-              fastify.log.error("skuCode not found");
+              fastify.log.info(
+                { trxId: transaction.trxId, provider },
+                "Manual provider detected, skipping Digiflazz order creation",
+              );
             }
           } else {
             await tx.transactions.update({
@@ -383,6 +541,294 @@ export default async function (fastify: FastInstance) {
         url: req.url,
         trxId: body.merchantOrderId,
         provider: "duitku",
+        requestPayload: body,
+        responsePayload: { message: "OK" },
+      });
+
+      return reply.send({ message: "OK" });
+    },
+  });
+
+  fastify.post("/callback/payment/midtrans", {
+    handler: async (req, reply) => {
+      const parseResult = MidtransCallbackSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        await createSystemLog(fastify, {
+          type: "midtrans_callback",
+          source: "callback.payment.midtrans",
+          message: "Invalid Midtrans callback payload",
+          statusCode: 400,
+          method: req.method,
+          url: req.url,
+          provider: "midtrans",
+          requestPayload: req.body,
+          metadata: { errors: parseResult.error.issues },
+        });
+        return reply.status(400).send({ message: "Invalid payload" });
+      }
+
+      const body = parseResult.data;
+      const serverKey = process.env.MIDTRANS_SERVER_KEY;
+      if (!serverKey) {
+        return reply
+          .status(500)
+          .send({ message: "Server configuration error" });
+      }
+
+      if (!verifyMidtransSignature(body, serverKey)) {
+        await createSystemLog(fastify, {
+          type: "midtrans_callback",
+          source: "callback.payment.midtrans",
+          message: "Midtrans callback signature mismatch",
+          statusCode: 401,
+          method: req.method,
+          url: req.url,
+          trxId: body.order_id,
+          provider: "midtrans",
+          requestPayload: body,
+        });
+        return reply.status(401).send({ message: "Invalid signature" });
+      }
+
+      try {
+        await fastify.prisma.$transaction(async (tx) => {
+          const successStatuses = ["capture", "settlement"];
+          const failedStatuses = ["deny", "cancel", "expire", "failure"];
+          const isSuccess =
+            successStatuses.includes(body.transaction_status) &&
+            (body.transaction_status !== "capture" ||
+              body.fraud_status === "accept");
+
+          const topup = await tx.balanceTopup.findFirst({
+            where: { topupCode: body.order_id },
+          });
+
+          if (topup) {
+            if (isSuccess) {
+              await creditWalletTopup(tx, topup);
+            } else if (
+              failedStatuses.includes(body.transaction_status) &&
+              topup.paymentStatus !== "FAILED"
+            ) {
+              await tx.balanceTopup.update({
+                where: { id: topup.id },
+                data: {
+                  paymentStatus: "FAILED",
+                  notes: `Midtrans ${body.transaction_status}`,
+                  paymentDetails: {
+                    ...(topup.paymentDetails as any),
+                    source: "MIDTRANS",
+                    transactionStatus: body.transaction_status,
+                    rawCallback: body,
+                  } as any,
+                },
+              });
+            }
+            return;
+          }
+
+          const transaction = await tx.transactions.findFirst({
+            where: { trxId: body.order_id },
+            include: {
+              product: {
+                select: {
+                  provider: true,
+                },
+              },
+              paymentMethod: {
+                select: {
+                  methodCode: true,
+                  source: true,
+                },
+              },
+            },
+          });
+
+          if (!transaction) {
+            throw Object.assign(new Error("Transaction not found"), {
+              statusCode: 404,
+            });
+          }
+
+          if (isSuccess) {
+            const firstSuccess = transaction.paymentStatus !== "SUCCESS";
+
+            if (firstSuccess) {
+              await tx.transactions.update({
+                where: { id: transaction.id },
+                data: {
+                  paymentStatus: "SUCCESS",
+                  orderStatus: "PENDING",
+                  paymentDetails: {
+                    ...(transaction.paymentDetails as any),
+                    source: "MIDTRANS",
+                    transactionStatus: body.transaction_status,
+                    transactionId: body.transaction_id,
+                    transactionTime: body.transaction_time,
+                    expiryTime: body.expiry_time,
+                    paymentType: body.payment_type,
+                    vaNumber:
+                      body.va_numbers?.[0]?.va_number ??
+                      body.permata_va_number ??
+                      null,
+                    billKey: body.bill_key ?? null,
+                    billerCode: body.biller_code ?? null,
+                    pdfUrl: body.pdf_url ?? null,
+                    rawCallback: body,
+                  } as any,
+                },
+              });
+            }
+
+            if (!firstSuccess) {
+              return;
+            }
+
+            const provider = transaction.product?.provider ?? "digiflazz";
+            if (provider === "digiflazz") {
+              const df = new DigiflazzClient();
+              const userData = transaction.userAccountData as any;
+
+              if (transaction.skuCode) {
+                try {
+                  const requestTrx = await df.prepaid.topup(
+                    transaction.skuCode,
+                    `${userData.primary_id}${userData.server_id}`,
+                    transaction.trxId,
+                  );
+                  fastify.log.info(requestTrx, "TRX DIGIFLAZZ");
+                } catch (error: any) {
+                  await tx.transactions.update({
+                    where: { id: transaction.id },
+                    data: { orderStatus: "FAILED" },
+                  });
+
+                  await restorePromotionUsage(tx, transaction);
+
+                  await tx.products.update({
+                    where: { id: transaction.productId ?? "0" },
+                    data: { stock: { increment: transaction.quantity } },
+                  });
+
+                  if (transaction.flashSaleId) {
+                    await tx.flashSale.update({
+                      where: { id: transaction.flashSaleId },
+                      data: { stock: { increment: transaction.quantity } },
+                    });
+                  }
+
+                  await refundToUserBalance({
+                    tx,
+                    userId: transaction.userId,
+                    amount: Number(transaction.totalPrice ?? 0),
+                    ref: transaction.trxId,
+                    paymentMethodCode:
+                      transaction.paymentMethod?.methodCode ?? null,
+                    paymentSource: transaction.paymentMethod?.source ?? null,
+                    meta: {
+                      transactionId: transaction.id,
+                      productId: transaction.productId,
+                    },
+                  });
+
+                  if (error?.provider || error?.statusCode) {
+                    await createSystemLog(fastify, {
+                      type: "third_party_error",
+                      source: "digiflazz.create_order",
+                      message:
+                        error?.data?.message ??
+                        error?.message ??
+                        "Gagal kirim order ke Digiflazz",
+                      statusCode: error?.statusCode ?? 502,
+                      method: req.method,
+                      url: req.url,
+                      trxId: transaction.trxId,
+                      provider: error?.provider ?? "digiflazz",
+                      requestPayload: error?.requestPayload ?? {
+                        skuCode: transaction.skuCode,
+                        customerNo: `${userData.primary_id}${userData.server_id}`,
+                        refId: transaction.trxId,
+                      },
+                      responsePayload:
+                        error?.responsePayload ?? error?.data ?? error ?? null,
+                      errorStack: error?.stack ?? null,
+                    });
+                  }
+                }
+              }
+            }
+          } else if (failedStatuses.includes(body.transaction_status)) {
+            const firstFailure = transaction.paymentStatus !== "FAILED";
+
+            if (firstFailure) {
+              await tx.transactions.update({
+                where: { id: transaction.id },
+                data: {
+                  paymentStatus: "FAILED",
+                  orderStatus: "FAILED",
+                  paymentDetails: {
+                    ...(transaction.paymentDetails as any),
+                    source: "MIDTRANS",
+                    transactionStatus: body.transaction_status,
+                    rawCallback: body,
+                  } as any,
+                },
+              });
+
+              await restorePromotionUsage(tx, transaction);
+              await tx.products.update({
+                where: { id: transaction.productId ?? "0" },
+                data: { stock: { increment: transaction.quantity } },
+              });
+
+              if (transaction.flashSaleId) {
+                await tx.flashSale.update({
+                  where: { id: transaction.flashSaleId },
+                  data: { stock: { increment: transaction.quantity } },
+                });
+              }
+            }
+          } else {
+            await tx.transactions.update({
+              where: { id: transaction.id },
+              data: {
+                paymentDetails: {
+                  ...(transaction.paymentDetails as any),
+                  source: "MIDTRANS",
+                  transactionStatus: body.transaction_status,
+                  rawCallback: body,
+                } as any,
+              },
+            });
+          }
+        });
+      } catch (err: any) {
+        const statusCode = err.statusCode ?? 500;
+        await createSystemLog(fastify, {
+          type: "midtrans_callback",
+          source: "callback.payment.midtrans",
+          message:
+            err?.message ?? "Unexpected error processing Midtrans callback",
+          statusCode,
+          method: req.method,
+          url: req.url,
+          trxId: (req.body as any)?.order_id ?? null,
+          provider: "midtrans",
+          requestPayload: req.body,
+          errorStack: err?.stack ?? null,
+        });
+        return reply.status(statusCode).send({ message: err.message });
+      }
+
+      await createSystemLog(fastify, {
+        type: "midtrans_callback",
+        source: "callback.payment.midtrans",
+        message: "Midtrans callback processed",
+        statusCode: 200,
+        method: req.method,
+        url: req.url,
+        trxId: body.order_id,
+        provider: "midtrans",
         requestPayload: body,
         responsePayload: { message: "OK" },
       });
@@ -489,6 +935,14 @@ export default async function (fastify: FastInstance) {
                   },
                 },
               ],
+            },
+            include: {
+              paymentMethod: {
+                select: {
+                  methodCode: true,
+                  source: true,
+                },
+              },
             },
           });
 
@@ -626,9 +1080,25 @@ export default async function (fastify: FastInstance) {
               });
             }
 
+            fastify.log.info(transaction, "Proses Pengembalian dana");
+            await refundToUserBalance({
+              tx,
+              userId: transaction.userId,
+              amount: Number(transaction.totalPrice ?? 0),
+              ref: transaction.trxId,
+              paymentMethodCode: transaction.paymentMethod?.methodCode ?? null,
+              paymentSource: transaction.paymentMethod?.source ?? null,
+              meta: {
+                transactionId: transaction.id,
+                productId: transaction.productId,
+                digiflazzRefId: trxData.ref_id,
+                digiflazzRc: trxData.rc,
+              },
+            });
+
             fastify.log.info(
               { ref_id: trxData.ref_id, rc: trxData.rc },
-              "Digiflazz transaction failed, stock restored",
+              "Digiflazz transaction failed, stock restored and balance refunded if eligible",
             );
           } else {
             // status === "Pending" → hanya log, tunggu callback berikutnya

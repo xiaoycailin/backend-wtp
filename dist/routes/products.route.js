@@ -371,7 +371,7 @@ async function productRoutes(fastify) {
                 return;
             if (!ensureSellerOrAdmin(user, reply))
                 return;
-            const { sku, title, description, subCategoryId, price, currency, stock, thumbnails, conditionNotes, special, } = req.body;
+            const { sku, title, description, subCategoryId, price, currency, stock, thumbnails, conditionNotes, special, provider, } = req.body;
             if (!title || !subCategoryId) {
                 return reply.status(400).send({
                     message: "Title and subCategoryId are required.",
@@ -400,6 +400,7 @@ async function productRoutes(fastify) {
                     stock: stock ?? 1,
                     thumbnails,
                     conditionNotes,
+                    provider: provider || "digiflazz",
                     isSpecial: special,
                 },
             });
@@ -425,7 +426,7 @@ async function productRoutes(fastify) {
             }
             if (!ensureOwnerOrAdmin(user, product.sellerUserId, reply))
                 return;
-            const { title, description, categoryId, subCategoryId, price, currency, stock, thumbnails, conditionNotes, status, } = req.body;
+            const { title, description, categoryId, subCategoryId, price, currency, stock, thumbnails, conditionNotes, status, provider, } = req.body;
             const updateData = {};
             if (title) {
                 updateData.title = title;
@@ -456,6 +457,8 @@ async function productRoutes(fastify) {
                 updateData.status = status;
             if (conditionNotes !== undefined)
                 updateData.conditionNotes = conditionNotes;
+            if (provider !== undefined)
+                updateData.provider = provider;
             const updatedProduct = await fastify.prisma.products.update({
                 where: { id: productId },
                 data: updateData,
