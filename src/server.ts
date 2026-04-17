@@ -81,7 +81,7 @@ const buildServer = async () => {
     return {
       ok: true,
       service: "backendwtp-update",
-      version: "1",
+      version: "2",
       timestamp: new Date().toISOString(),
       uptimeSeconds: Math.round(process.uptime()),
     };
