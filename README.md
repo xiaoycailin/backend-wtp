@@ -21,6 +21,7 @@ Authorization: Bearer <jwt_token>
 Mayoritas response dibungkus seperti ini.
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -30,6 +31,7 @@ Mayoritas response dibungkus seperti ini.
 ```
 
 ### Error
+
 ```json
 {
   "status": 400,
@@ -47,6 +49,7 @@ Mayoritas response dibungkus seperti ini.
 # Route List
 
 ## Public
+
 - `GET /health`
 - `GET /health/db`
 - `GET /category`
@@ -67,9 +70,22 @@ Mayoritas response dibungkus seperti ini.
 - `POST /games/check-id`
 - `POST /callback/payment/duitku`
 - `POST /callback/agregator/digiflazz`
+- `GET /leaderboard`
+- `GET /promotions`
+- `GET /promotions/:id`
+- `POST /promotions/apply`
+- `GET /badges`
+- `GET /banners`
+- `GET /banners/:id`
+- `GET /input-types/subcategory/:subCategoryId`
+- `GET /input-types/subcategory-slug/:slug`
+- `POST /games/check-id`
+- `POST /callback/payment/duitku`
+- `POST /callback/agregator/digiflazz`
 - `POST /webhook/deploy`
 
 ## Auth Required
+
 - `GET /users/self`
 - `POST /users/auth/logout`
 - `GET /users/auth/logout`
@@ -78,12 +94,14 @@ Mayoritas response dibungkus seperti ini.
 - `POST /aws/s3/upload`
 
 ## Seller/Admin
+
 - `POST /products`
 - `PUT /products/:productId`
 - `DELETE /products/:productId`
 - `POST /products/flashsale`
 
 ## Admin Only
+
 - `POST /category`
 - `POST /category/sub/:categoryId`
 - `PUT /category/:categoryId`
@@ -97,15 +115,33 @@ Mayoritas response dibungkus seperti ini.
 - `GET /transactions/summary`
 - `PATCH /site-config`
 - `DELETE /site-config/extras/:key`
+- `GET /input-types`
+- `GET /input-types/:id`
+- `POST /input-types`
+- `PUT /input-types/:id`
+- `DELETE /input-types/:id`
+- `POST /promotions`
+- `PUT /promotions/:id`
+- `DELETE /promotions/:id`
+- `GET /system-logs`
+- `GET /activity-logs`
+- `POST /badges`
+- `PUT /badges/:id`
+- `DELETE /badges/:id`
+- `POST /banners`
+- `PUT /banners/:id`
+- `DELETE /banners/:id`
 
 ---
 
 # 1. Health Routes
 
 ## GET /health
+
 Cek status server.
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -119,9 +155,11 @@ Cek status server.
 ```
 
 ## GET /health/db
+
 Cek koneksi database.
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -134,6 +172,7 @@ Cek koneksi database.
 ```
 
 ### Error
+
 ```json
 {
   "status": 500,
@@ -150,9 +189,11 @@ Cek koneksi database.
 # 2. User Routes
 
 ## POST /users/auth/register
+
 Register user baru.
 
 ### Body
+
 ```json
 {
   "email": "user@gmail.com",
@@ -164,6 +205,7 @@ Register user baru.
 ```
 
 ### Success
+
 ```json
 {
   "status": 201,
@@ -177,6 +219,7 @@ Register user baru.
 ```
 
 ### Error
+
 ```json
 {
   "status": 409,
@@ -187,9 +230,11 @@ Register user baru.
 ```
 
 ## POST /users/auth/login
+
 Login user.
 
 ### Body
+
 ```json
 {
   "email": "bento01@gmail.com",
@@ -198,6 +243,7 @@ Login user.
 ```
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -210,6 +256,7 @@ Login user.
 ```
 
 ### Error
+
 ```json
 {
   "status": 401,
@@ -220,14 +267,17 @@ Login user.
 ```
 
 ## POST /users/auth/logout
+
 Logout session aktif.
 
 ### Header
+
 ```http
 Authorization: Bearer <jwt_token>
 ```
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -238,12 +288,15 @@ Authorization: Bearer <jwt_token>
 ```
 
 ## GET /users/auth/logout
+
 Versi GET untuk logout, behavior sama seperti POST.
 
 ## GET /users/self
+
 Ambil data user login.
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -257,6 +310,7 @@ Ambil data user login.
 ```
 
 ### Error
+
 ```json
 {
   "status": 401,
@@ -271,18 +325,23 @@ Ambil data user login.
 # 3. Category Routes
 
 ## GET /category
+
 Ambil semua category beserta subcategory.
 
 ## GET /category/sub
+
 Ambil semua subcategory.
 
 ## GET /category/sub/:dynamic
+
 Ambil subcategory berdasarkan `categoryId` atau `slug`.
 
 ### Query
+
 - `productInclude=true` untuk ikutkan produk aktif
 
 ### Error
+
 ```json
 {
   "status": 404,
@@ -293,9 +352,11 @@ Ambil subcategory berdasarkan `categoryId` atau `slug`.
 ```
 
 ## POST /category
+
 Admin only, buat category baru.
 
 ### Body
+
 ```json
 {
   "title": "Voucher"
@@ -303,9 +364,11 @@ Admin only, buat category baru.
 ```
 
 ## POST /category/sub/:categoryId
+
 Admin only, buat subcategory baru.
 
 ### Body
+
 ```json
 {
   "title": "Mobile Legends",
@@ -317,9 +380,11 @@ Admin only, buat subcategory baru.
 ```
 
 ## PUT /category/:categoryId
+
 Admin only, update category.
 
 ### Body
+
 ```json
 {
   "title": "Voucher Game"
@@ -327,12 +392,15 @@ Admin only, update category.
 ```
 
 ## DELETE /category/:categoryId
+
 Admin only, hapus category dan subcategory terkait.
 
 ## PUT /category/sub/:subId
+
 Admin only, update subcategory.
 
 ### Body
+
 ```json
 {
   "title": "Free Fire",
@@ -345,6 +413,7 @@ Admin only, update subcategory.
 ```
 
 ## DELETE /category/sub/:subId
+
 Admin only, hapus subcategory.
 
 ---
@@ -352,9 +421,11 @@ Admin only, hapus subcategory.
 # 4. Product Routes
 
 ## GET /products/list
+
 List produk.
 
 ### Query Optional
+
 - `q`
 - `id`
 - `category`
@@ -365,6 +436,7 @@ List produk.
 - `limit`
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -386,12 +458,15 @@ List produk.
 ```
 
 ## GET /products/:dynamic
+
 Detail produk by `id` atau `slug`.
 
 ## POST /products
+
 Seller/Admin only.
 
 ### Body
+
 ```json
 {
   "title": "86 Diamond",
@@ -407,15 +482,19 @@ Seller/Admin only.
 ```
 
 ## PUT /products/:productId
+
 Update product milik sendiri atau admin.
 
 ## DELETE /products/:productId
+
 Hapus product milik sendiri atau admin.
 
 ## POST /products/approve
+
 Admin only, approve product draft.
 
 ### Body
+
 ```json
 {
   "productId": "product-id"
@@ -423,9 +502,11 @@ Admin only, approve product draft.
 ```
 
 ## POST /products/flashsale
+
 Seller/Admin only, buat flash sale.
 
 ### Body
+
 ```json
 {
   "productId": "product-id",
@@ -435,6 +516,7 @@ Seller/Admin only, buat flash sale.
 ```
 
 ## GET /products/flashsale
+
 Ambil daftar flash sale aktif.
 
 ---
@@ -442,14 +524,18 @@ Ambil daftar flash sale aktif.
 # 5. Payment Routes
 
 ## GET /payments/available
+
 Ambil payment method.
+
 - buyer/public: hanya yang `active`
 - admin: semua payment method
 
 ## POST /payments
+
 Admin only, buat payment method.
 
 ### Body
+
 ```json
 {
   "methodCode": "QRIS",
@@ -464,6 +550,7 @@ Admin only, buat payment method.
 ```
 
 ### Success
+
 ```json
 {
   "status": 201,
@@ -476,9 +563,11 @@ Admin only, buat payment method.
 ```
 
 ## PUT /payments/:id
+
 Admin only, update payment method.
 
 ### Body
+
 ```json
 {
   "paymentName": "QRIS Updated",
@@ -487,9 +576,11 @@ Admin only, update payment method.
 ```
 
 ## DELETE /payments/:id
+
 Admin only, hapus payment method.
 
 ### Error
+
 ```json
 {
   "status": 409,
@@ -500,9 +591,11 @@ Admin only, hapus payment method.
 ```
 
 ## POST /payments/prices
+
 Hitung harga semua payment method aktif.
 
 ### Body
+
 ```json
 {
   "itemId": "product-id",
@@ -512,6 +605,7 @@ Hitung harga semua payment method aktif.
 ```
 
 ### Error
+
 ```json
 {
   "status": 400,
@@ -522,9 +616,11 @@ Hitung harga semua payment method aktif.
 ```
 
 ## POST /payments/purchase/review
+
 Preview pembelian.
 
 ### Body
+
 ```json
 {
   "itemId": "product-id",
@@ -539,9 +635,11 @@ Preview pembelian.
 ```
 
 ## POST /payments/purchase
+
 Buat transaksi pembayaran.
 
 ### Body
+
 ```json
 {
   "itemId": "product-id",
@@ -558,6 +656,7 @@ Buat transaksi pembayaran.
 ```
 
 ### Notes
+
 - `email` wajib
 - `phoneNumber` opsional
 - `qty` maksimal 10
@@ -568,12 +667,15 @@ Buat transaksi pembayaran.
 # 6. Transaction Routes
 
 ## GET /transactions/history/:trxId
+
 Ambil detail transaksi by trxId.
 
 ## GET /transactions/c/:trxId
+
 Cek apakah transaksi ada.
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -584,11 +686,14 @@ Cek apakah transaksi ada.
 ```
 
 ## GET /transactions/history
+
 Butuh login.
+
 - admin bisa lihat semua
 - non-admin cuma lihat transaksi sendiri
 
 ### Query Optional
+
 - `trxId`
 - `paymentStatus`
 - `orderStatus`
@@ -599,9 +704,11 @@ Butuh login.
 - `limit`
 
 ## GET /transactions/summary
+
 Admin only.
 
 ### Query Optional
+
 - `from`
 - `to`
 
@@ -610,12 +717,15 @@ Admin only.
 # 7. Site Config Routes
 
 ## GET /site-config
+
 Ambil site config publik, extra secret akan dimasking.
 
 ## PATCH /site-config
+
 Admin only.
 
 ### Body
+
 ```json
 {
   "siteName": "WTPANJAY",
@@ -633,6 +743,7 @@ Admin only.
 ```
 
 ## DELETE /site-config/extras/:key
+
 Admin only, hapus extra config tertentu.
 
 ---
@@ -640,29 +751,36 @@ Admin only, hapus extra config tertentu.
 # 8. Upload Routes
 
 ## POST /images/upload
+
 Upload gambar ke local storage.
 
 ### Header
+
 ```http
 Authorization: Bearer <jwt_token>
 Content-Type: multipart/form-data
 ```
 
 ### Rules
+
 - mime allowed: `image/png`, `image/jpeg`, `image/webp`
 - max size: `5 MB`
 
 ## POST /aws/s3/upload
+
 Upload gambar ke S3.
 
 ### Rules
+
 - mime allowed: `image/png`, `image/jpeg`, `image/webp`
 - max size: `5 MB`
 
 ## GET /static/uploads/:filename
+
 Ambil file upload lokal.
 
 ### Error
+
 ```json
 {
   "status": 404,
@@ -677,9 +795,11 @@ Ambil file upload lokal.
 # 9. Game Check Routes
 
 ## GET /games/supported
+
 Ambil daftar game yang didukung.
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -693,9 +813,11 @@ Ambil daftar game yang didukung.
 ```
 
 ## POST /games/check-id
+
 Cek user ID game.
 
 ### Body
+
 ```json
 {
   "game": "mobile-legends",
@@ -705,6 +827,7 @@ Cek user ID game.
 ```
 
 ### Error
+
 ```json
 {
   "status": 400,
@@ -713,7 +836,8 @@ Cek user ID game.
   }
 }
 ```
-```
+
+````
 
 ---
 
@@ -730,9 +854,10 @@ Callback dari Duitku.
     "message": "OK"
   }
 }
-```
+````
 
 ### Error
+
 ```json
 {
   "status": 401,
@@ -743,9 +868,11 @@ Callback dari Duitku.
 ```
 
 ## POST /callback/agregator/digiflazz
+
 Callback dari Digiflazz.
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -757,16 +884,1021 @@ Callback dari Digiflazz.
 
 ---
 
+# 11. Input Types Routes
+
+## GET /input-types
+
+Admin only. List semua input types.
+
+### Query Optional
+
+- `subCategoryId` - filter by subcategory
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "id": 1,
+      "name": "user_id",
+      "label": "User ID",
+      "type": "text",
+      "model": "input",
+      "placeholder": "Masukkan User ID",
+      "options": null,
+      "icon": "user",
+      "maskingForView": false,
+      "subCategoryId": "uuid",
+      "createdAt": "2026-04-18T12:00:00.000Z",
+      "subCategory": {
+        "id": "subcategory-id",
+        "title": "Mobile Legends",
+        "slug": "mobile-legends"
+      }
+    }
+  ]
+}
+```
+
+### Error
+
+```json
+{
+  "status": 403,
+  "data": {
+    "message": "Forbidden"
+  }
+}
+```
+
+## GET /input-types/:id
+
+Admin only. Detail input type.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "id": 1,
+    "name": "user_id",
+    "label": "User ID",
+    "type": "text",
+    "model": "input",
+    "placeholder": "Masukkan User ID",
+    "options": null,
+    "icon": "user",
+    "maskingForView": false,
+    "subCategoryId": "uuid",
+    "createdAt": "2026-04-18T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Input type not found"
+  }
+}
+```
+
+## POST /input-types
+
+Admin only. Create input type.
+
+### Body
+
+```json
+{
+  "name": "user_id",
+  "label": "User ID",
+  "type": "text",
+  "model": "input",
+  "placeholder": "Masukkan User ID",
+  "options": null,
+  "icon": "user",
+  "maskingForView": false,
+  "subCategoryId": "uuid"
+}
+```
+
+### Success
+
+```json
+{
+  "status": 201,
+  "data": {
+    "id": 1,
+    "name": "user_id",
+    "label": "User ID",
+    "type": "text",
+    "model": "input",
+    "placeholder": "Masukkan User ID",
+    "options": null,
+    "icon": "user",
+    "maskingForView": false,
+    "subCategoryId": "uuid",
+    "createdAt": "2026-04-18T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 400,
+  "data": {
+    "message": "Validation error",
+    "errors": {
+      "subCategoryId": "SubCategory not found"
+    }
+  }
+}
+```
+
+## PUT /input-types/:id
+
+Admin only. Update input type.
+
+### Body
+
+```json
+{
+  "label": "Player ID",
+  "placeholder": "Masukkan Player ID"
+}
+```
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "id": 1,
+    "name": "user_id",
+    "label": "Player ID",
+    "type": "text",
+    "model": "input",
+    "placeholder": "Masukkan Player ID",
+    "options": null,
+    "icon": "user",
+    "maskingForView": false,
+    "subCategoryId": "uuid",
+    "createdAt": "2026-04-18T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Input type not found"
+  }
+}
+```
+
+## DELETE /input-types/:id
+
+Admin only. Delete input type.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Input type deleted successfully"
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Input type not found"
+  }
+}
+```
+
+## GET /input-types/subcategory/:subCategoryId
+
+Public. Ambil input types berdasarkan subcategory ID.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "called": "user_id",
+      "label": "User ID",
+      "type": "text",
+      "model": "input",
+      "placeholder": "Masukkan User ID",
+      "options": null,
+      "icon": "user",
+      "maskingForView": false,
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "SubCategory not found"
+  }
+}
+```
+
+## GET /input-types/subcategory-slug/:slug
+
+Public. Ambil input types berdasarkan subcategory slug.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "id": 1,
+      "name": "user_id",
+      "label": "User ID",
+      "type": "text",
+      "model": "input",
+      "placeholder": "Masukkan User ID",
+      "options": null,
+      "icon": "user",
+      "maskingForView": false,
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "SubCategory not found"
+  }
+}
+```
+
+---
+
+# 12. Leaderboard Routes
+
+## GET /leaderboard
+
+Public. Ambil leaderboard untuk hari ini, minggu ini, bulan ini.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "today": [
+      {
+        "key": "buyer-id",
+        "buyerName": "Aiden",
+        "productTitle": "144 Diamond",
+        "totalAmount": 55000,
+        "totalOrders": 1,
+        "totalQuantity": 1,
+        "lastCreatedAt": "2026-04-18T12:00:00.000Z"
+      }
+    ],
+    "week": [],
+    "month": [],
+    "updatedAt": "2026-04-18T12:00:00.000Z"
+  }
+}
+```
+
+---
+
+# 13. Promotion Routes
+
+## GET /promotions
+
+Public. List semua promo.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "id": 1,
+      "code": "DISKON10",
+      "title": "Diskon 10%",
+      "productId": null,
+      "categoryId": null,
+      "subCategoryId": null,
+      "active": true,
+      "allowFlashSale": false,
+      "maxUse": 5,
+      "used": 0,
+      "discType": "percent",
+      "value": 10,
+      "minTrx": 1000,
+      "maxDiscount": 5000,
+      "userId": null,
+      "expiredDate": "2026-05-01T00:00:00.000Z",
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+## GET /promotions/:id
+
+Public. Detail promo.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data1": {
+    "id": 1,
+    "code": "DISKON10",
+    "title": "Diskon 10%",
+    "productId": null,
+    "categoryId": null,
+    "subCategoryId": null,
+    "active": true,
+    "allowFlashSale": false,
+    "maxUse": 5,
+    "used": 0,
+    "discType": "percent",
+    "value": 10,
+    "minTrx": 1000,
+    "maxDiscount": 5000,
+    "userId": null,
+    "expiredDate": "2026-05-01T00:00:00.000Z",
+    "createdAt": "2026-04-18T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Promotion tidak ditemukan."
+  }
+}
+```
+
+## POST /promotions/apply
+
+Public. Apply promo code.
+
+### Body
+
+```json
+{
+  "id": 1,
+  "itemId": "product-id",
+  "flashId": 1
+}
+```
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Kode promo berhasil di gunakan."
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 406,
+  "data": {
+    "message": "Tidak bisa digabung flash sale."
+  }
+}
+```
+
+### Notes
+
+- Flash sale product tidak bisa pakai promo yang tidak allowFlashSale
+
+## POST /promotions
+
+Admin only. Create promo.
+
+### Body
+
+```json
+{
+  "code": "DISKON10",
+  "title": "Diskon 10%",
+  "productId": "",
+  "categoryId": "",
+  "subCategoryId": "",
+  "active": true,
+  "allowFlashSale": false,
+  "maxUse": 5,
+  "used": 0,
+  "discType": "percent",
+  "value": 10,
+  "minTrx": 1000,
+  "maxDiscount": 5000,
+  "userId": "",
+  "expiredDate": "2026-05-01"
+}
+```
+
+### Success
+
+```json
+{
+  "status": 201,
+  "data": {
+    "message": "Promotion berhasil dibuat.",
+    "promotion": {
+      "id": 1,
+      "code": "DISKON10",
+      "title": "Diskon 10%",
+      "productId": null,
+      "categoryId": null,
+      "subCategoryId": null,
+      "active": true,
+      "allowFlashSale": false,
+      "maxUse": 5,
+      "used": 0,
+      "discType": "percent",
+      "value": 10,
+      "minTrx": 1000,
+      "maxDiscount": 5000,
+      "userId": null,
+      "expiredDate": "2026-05-01T00:00:00.000Z",
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 409,
+  "data": {
+    "message": "Kode promo sudah ada."
+  }
+}
+```
+
+## PUT /promotions/:id
+
+Admin only. Update promo.
+
+### Body
+
+```json
+{
+  "title": "Diskon 15%",
+  "value": 15,
+  "maxDiscount": 10000
+}
+```
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Promotion berhasil diperbarui.",
+    "promotion": {
+      "id": 1,
+      "code": "DISKON10",
+      "title": "Diskon 15%",
+      "productId": null,
+      "categoryId": null,
+      "subCategoryId": null,
+      "active": true,
+      "allowFlashSale": false,
+      "maxUse": 5,
+      "used": 0,
+      "discType": "percent",
+      "value": 15,
+      "minTrx": 1000,
+      "maxDiscount": 10000,
+      "userId": null,
+      "expiredDate": "2026-05-01T00:00:00.000Z",
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Promotion tidak ditemukan."
+  }
+}
+```
+
+## DELETE /promotions/:id
+
+Admin only. Delete promo.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Promotion berhasil dihapus."
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Promotion tidak ditemukan."
+  }
+}
+```
+
+---
+
+# 14. System Log Routes
+
+## GET /system-logs
+
+Admin only. System logs dengan pagination.
+
+### Query Optional
+
+- `page`
+- `limit`
+- `type`
+- `source`
+- `provider`
+- `trxId`
+- `search`
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "type": "payment",
+        "source": "duitku",
+        "provider": "DUITKU",
+        "trxId": "TRX-123",
+        "url": "https://callback",
+        "message": "Payment successful",
+        "createdAt": "2026-04-18T12:00:00.000Z"
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 20,
+      "total": 100,
+      "totalPages": 5
+    }
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 403,
+  "data": {
+    "message": "Forbidden"
+  }
+}
+```
+
+---
+
+# 15. Activity Log Routes
+
+## GET /activity-logs
+
+Admin only. Activity logs dengan pagination.
+
+### Query Optional
+
+- `page`
+- `limit`
+- `action`
+- `entityType`
+- `search`
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "actorName": "admin",
+        "action": "CREATE",
+        "entityType": "product",
+        "entityLabel": "144 Diamond",
+        "description": "Product created",
+        "createdAt": "2026-04-18T12:00:00.000Z"
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 20,
+      "total": 50,
+      "totalPages": 3
+    }
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 403,
+  "data": {
+    "message": "Forbidden"
+  }
+}
+```
+
+---
+
+# 16. Badge Routes
+
+## GET /badges
+
+Public. List semua badges.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "id": 1,
+      "label": "Featured",
+      "color": "#f5c518",
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+## POST /badges
+
+Admin only. Create badge.
+
+### Body
+
+```json
+{
+  "label": "Featured",
+  "color": "#f5c518"
+}
+```
+
+### Success
+
+```json
+{
+  "status": 201,
+  "data": {
+    "message": "Badge berhasil dibuat.",
+    "id": 1,
+    "label": "Featured",
+    "color": "#f5c518",
+    "createdAt": "2026-04-18T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 400,
+  "data": {
+    "message": "Label wajib diisi."
+  }
+}
+```
+
+## PUT /badges/:id
+
+Admin only. Update badge.
+
+### Body
+
+```json
+{
+  "label": "Popular",
+  "color": "#ff0000"
+}
+```
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Badge berhasil diupdate.",
+    "id": 1,
+    "label": "Popular",
+    "color": "#ff0000",
+    "createdAt": "2026-04-18T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Badge tidak ditemukan."
+  }
+}
+```
+
+## DELETE /badges/:id
+
+Admin only. Delete badge.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Badge berhasil dihapus."
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Badge tidak ditemukan."
+  }
+}
+```
+
+---
+
+# 17. Banner Routes
+
+## GET /banners
+
+Public. List semua banners (filterable by type).
+
+### Query Optional
+
+- `type` - "popup" atau "banner"
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "id": 1,
+      "title": "Welcome Banner",
+      "imageUrl": "https://example.com/banner.png",
+      "type": "banner",
+      "clickUrl": "https://example.com",
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+## GET /banners/:id
+
+Public. Detail banner.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "id": 1,
+    "title": "Welcome Banner",
+    "imageUrl": "https://example.com/banner.png",
+    "type": "banner",
+    "clickUrl": "https://example.com",
+    "createdAt": "2026-04-18T12:00:00.000Z"
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Banner tidak ditemukan."
+  }
+}
+```
+
+## POST /banners
+
+Admin only. Create banner.
+
+### Body
+
+```json
+{
+  "title": "Welcome Banner",
+  "imageUrl": "https://example.com/banner.png",
+  "type": "banner",
+  "clickUrl": "https://example.com"
+}
+```
+
+### Success
+
+```json
+{
+  "status": 201,
+  "data": {
+    "message": "Banner berhasil dibuat.",
+    "banner": {
+      "id": 1,
+      "title": "Welcome Banner",
+      "imageUrl": "https://example.com/banner.png",
+      "type": "banner",
+      "clickUrl": "https://example.com",
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 400,
+  "data": {
+    "message": "Validasi gagal.",
+    "errors": {
+      "title": "Title wajib diisi"
+    }
+  }
+}
+```
+
+## PUT /banners/:id
+
+Admin only. Update banner.
+
+### Body
+
+```json
+{
+  "title": "Summer Sale Banner",
+  "clickUrl": "https://example.com/summer"
+}
+```
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Banner berhasil diperbarui.",
+    "banner": {
+      "id": 1,
+      "title": "Summer Sale Banner",
+      "imageUrl": "https://example.com/banner.png",
+      "type": "banner",
+      "clickUrl": "https://example.com/summer",
+      "createdAt": "2026-04-18T12:00:00.000Z"
+    }
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Banner tidak ditemukan."
+  }
+}
+```
+
+## DELETE /banners/:id
+
+Admin only. Delete banner.
+
+### Success
+
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Banner berhasil dihapus."
+  }
+}
+```
+
+### Error
+
+```json
+{
+  "status": 404,
+  "data": {
+    "message": "Banner tidak ditemukan."
+  }
+}
+```
+
+---
+
 # 11. GitHub Webhook Route
 
 ## POST /webhook/deploy
+
 Webhook deploy dari GitHub.
 
 ### Required Header
+
 - `x-hub-signature-256`
 - `x-github-event: push`
 
 ### Success
+
 ```json
 {
   "status": 200,
@@ -779,6 +1911,7 @@ Webhook deploy dari GitHub.
 ```
 
 ### Error
+
 ```json
 {
   "status": 401,
@@ -793,21 +1926,26 @@ Webhook deploy dari GitHub.
 # Important Notes
 
 ## Payment Rules
+
 - `email` wajib di `/payments/purchase`
 - `phoneNumber` opsional
 - payment method nonaktif tidak bisa dipakai buyer
 - produk flash sale hanya boleh `qty = 1`
 
 ## Upload Rules
+
 - file type: png, jpg, jpeg, webp
 - max size 5 MB
 
 ## Auth Rules
+
 - role tidak sesuai akan kena `403`
 - token invalid / expired akan gagal auth
 
 ## Env yang penting
+
 Minimal env yang perlu disiapkan:
+
 - `PORT`
 - `DATABASE_URL`
 - `JWT_SECRET`
