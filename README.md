@@ -1888,6 +1888,397 @@ Admin only. Delete banner.
 
 # 11. GitHub Webhook Route
 
+# Article Routes
+
+## Public
+- `GET /articles` - List articles with pagination and filter (category, tag, status, search)
+- `GET /articles/:id` - Get article by ID
+- `GET /articles/slug/:slug` - Get article by slug
+- `GET /article-categories` - List all article categories
+- `GET /article-categories/:id` - Get category by ID
+- `GET /article-categories/slug/:slug` - Get category by slug
+- `GET /article-tags` - List all tags
+- `GET /article-tags/:id` - Get tag by ID
+- `GET /article-tags/slug/:slug` - Get tag by slug
+- `GET /articles/:articleId/comments` - Get comments for article with pagination
+
+## Auth Required
+- `POST /articles/:id/like` - Like/unlike article (requires body: `{}`)
+- `POST /articles/:id/bookmark` - Bookmark/unbookmark article (requires body: `{}`)
+- `POST /articles/:articleId/comments` - Add comment to article
+- `PUT /articles/comments/:id` - Update comment (own or admin)
+- `DELETE /articles/comments/:id` - Delete comment (own or admin)
+
+## Admin Only
+- `POST /articles` - Create new article
+- `PUT /articles/:id` - Update article
+- `DELETE /articles/:id` - Delete article
+- `POST /article-categories` - Create new category
+- `PUT /article-categories/:id` - Update category
+- `DELETE /article-categories/:id` - Delete category
+- `POST /article-tags` - Create new tag
+- `PUT /article-tags/:id` - Update tag
+- `DELETE /article-tags/:id` - Delete tag
+
+---
+
+# 18. Article Routes Detail
+
+## GET /articles
+Get list of articles with pagination and filtering.
+
+### Query Params
+- `page` (default: 1) - Page number
+- `limit` (default: 20, max: 100) - Items per page
+- `categoryId` - Filter by category UUID
+- `tagId` - Filter by tag UUID
+- `status` - Filter by status (DRAFT/PUBLISHED/ARCHIVED) - admin only
+- `featured` - Filter featured articles (true/false)
+- `pinned` - Filter pinned articles (true/false)
+- `search` - Search in title, excerpt, content, meta fields
+- `authorId` - Filter by author UUID
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "items": [
+      {
+        "id": "793a1a62-30c2-4670-b3cf-8c0bead2e844",
+        "title": "Belajar React JS",
+        "slug": "belajar-react-js-pemula",
+        "excerpt": "Pandu lengkap belajar React JS",
+        "thumbnail": null,
+        "status": "PUBLISHED",
+        "publishedAt": "2026-04-18T15:19:24.954Z",
+        "createdAt": "2026-04-18T15:19:24.956Z",
+        "views": 1,
+        "likesCount": 1,
+        "commentsCount": 1,
+        "featured": false,
+        "pinned": false,
+        "author": {
+          "id": "user-id",
+          "email": "admin@wtp.com",
+          "displayName": "Admin WTP"
+        },
+        "category": {
+          "id": "cat-id",
+          "name": "Technology & Programming",
+          "slug": "technology"
+        },
+        "tags": [
+          {
+            "tag": {
+              "id": "tag-id",
+              "name": "Tutorial",
+              "slug": "tutorial",
+              "color": "#ff5722"
+            }
+          }
+        ]
+      }
+    ],
+    "meta": {
+      "page": 1,
+      "limit": 20,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+## GET /articles/slug/:slug
+Get article detail by slug.
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "id": "793a1a62-30c2-4670-b3cf-8c0bead2e844",
+    "title": "Belajar React JS untuk Pemula",
+    "slug": "belajar-react-js-pemula",
+    "content": "React JS adalah library JavaScript yang powerful...",
+    "excerpt": "Pandu lengkap belajar React JS dari nol hingga mahir",
+    "thumbnail": null,
+    "authorId": "371e7000-8d20-4948-a3a0-019eb53b0d82",
+    "status": "PUBLISHED",
+    "publishedAt": "2026-04-18T15:19:24.954Z",
+    "createdAt": "2026-04-18T15:19:24.956Z",
+    "updatedAt": "2026-04-18T15:21:26.732Z",
+    "metaTitle": null,
+    "metaDescription": null,
+    "metaKeywords": null,
+    "ogImage": null,
+    "readingTime": 0,
+    "featuredImages": null,
+    "categoryId": "ba1dba98-48c8-4f06-9c9a-71f3eb43bd25",
+    "views": 1,
+    "likesCount": 1,
+    "commentsCount": 1,
+    "featured": false,
+    "pinned": false,
+    "author": {
+      "id": "371e7000-8d20-4948-a3a0-019eb53b0d82",
+      "email": "admin@wtp.com",
+      "displayName": "Admin WTP",
+      "createdAt": "2026-04-18T15:17:13.251Z"
+    },
+    "category": {
+      "id": "ba1dba98-48c8-4f06-9c9a-71f3eb43bd25",
+      "name": "Technology & Programming",
+      "slug": "technology",
+      "thumbnail": null
+    },
+    "tags": [
+      {
+        "articleId": "793a1a62-30c2-4670-b3cf-8c0bead2e844",
+        "tagId": "feea41c3-4b87-4d56-baea-afdafe6485b9",
+        "createdAt": "2026-04-18T15:19:25.232Z",
+        "tag": {
+          "id": "feea41c3-4b87-4d56-baea-afdafe6485b9",
+          "name": "Tutorial",
+          "slug": "tutorial",
+          "color": "#ff5722",
+          "description": "Panduan belajar"
+        }
+      }
+    ],
+    "comments": [...],
+    "likes": [...],
+    "bookmarks": []
+  }
+}
+```
+
+## POST /articles
+Create new article (admin only).
+
+### Body
+```json
+{
+  "title": "Belajar React JS untuk Pemula",
+  "slug": "belajar-react-js-pemula",
+  "content": "React JS adalah library JavaScript yang powerful...",
+  "excerpt": "Pandu lengkap belajar React JS",
+  "thumbnail": "https://example.com/thumb.jpg",
+  "categoryId": "ba1dba98-48c8-4f06-9c9a-71f3eb43bd25",
+  "status": "PUBLISHED",
+  "metaTitle": "Custom SEO Title",
+  "metaDescription": "Custom SEO description",
+  "metaKeywords": "react, javascript, tutorial",
+  "ogImage": "https://example.com/og.jpg",
+  "tags": ["feea41c3-4b87-4d56-baea-afdafe6485b9"]
+}
+```
+
+### Success
+```json
+{
+  "status": 201,
+  "data": {
+    "message": "Article berhasil dibuat.",
+    "article": {...}
+  }
+}
+```
+
+### Error
+```json
+{
+  "status": 409,
+  "data": {
+    "message": "Slug sudah digunakan."
+  }
+}
+```
+
+## PUT /articles/:id
+Update article (admin only).
+
+### Body
+Same as POST but all fields are optional.
+
+## DELETE /articles/:id
+Delete article (admin only).
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Article berhasil dihapus."
+  }
+}
+```
+
+## POST /articles/:id/like
+Like or unlike an article (auth required).
+
+### Body
+```json
+{}
+```
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Article berhasil dilike.",
+    "liked": true
+  }
+}
+```
+
+### Unlike Response
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Like berhasil dihapus.",
+    "liked": false
+  }
+}
+```
+
+## POST /articles/:id/bookmark
+Bookmark or unbookmark an article (auth required).
+
+### Body
+```json
+{}
+```
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "message": "Article berhasil bookmark.",
+    "bookmarked": true
+  }
+}
+```
+
+## POST /articles/:articleId/comments
+Add comment to article (auth required).
+
+### Body
+```json
+{
+  "content": "Artikel yang sangat bermanfaat!",
+  "parentId": "optional-comment-id-for-reply"
+}
+```
+
+### Success
+```json
+{
+  "status": 201,
+  "data": {
+    "message": "Comment berhasil dibuat.",
+    "comment": {
+      "id": "5e9e8c04-7d11-48e0-8f66-12c5d68af51c",
+      "articleId": "793a1a62-30c2-4670-b3cf-8c0bead2e844",
+      "userId": "371e7000-8d20-4948-a3a0-019eb53b0d82",
+      "content": "Artikel yang sangat bermanfaat!",
+      "parentId": null,
+      "createdAt": "2026-04-18T15:20:35.447Z",
+      "user": {
+        "id": "371e7000-8d20-4948-a3a0-019eb53b0d82",
+        "displayName": "Admin WTP"
+      },
+      "replies": []
+    }
+  }
+}
+```
+
+## GET /articles/:articleId/comments
+Get comments for article with pagination.
+
+### Query Params
+- `page` (default: 1)
+- `limit` (default: 20)
+- `parentId` - Filter replies for specific comment
+
+### Success
+```json
+{
+  "status": 200,
+  "data": {
+    "items": [...],
+    "meta": {
+      "page": 1,
+      "limit": 20,
+      "total": 1,
+      "totalPages": 1
+    }
+  }
+}
+```
+
+## PUT /articles/comments/:id
+Update comment (owner or admin only).
+
+## DELETE /articles/comments/:id
+Delete comment and all its replies (owner or admin only).
+
+---
+
+## Article Category Routes
+
+### POST /article-categories
+Create new category (admin only).
+
+### Body
+```json
+{
+  "name": "Technology & Programming",
+  "slug": "technology-programming",
+  "description": "Artikel tentang teknologi dan pemrograman",
+  "thumbnail": "https://example.com/cat-thumb.jpg"
+}
+```
+
+### PUT /article-categories/:id
+Update category (admin only).
+
+### DELETE /article-categories/:id
+Delete category (admin only). Cannot delete if still has articles.
+
+---
+
+## Article Tag Routes
+
+### POST /article-tags
+Create new tag (admin only).
+
+### Body
+```json
+{
+  "name": "Tutorial",
+  "slug": "tutorial",
+  "description": "Panduan belajar step by step",
+  "color": "#ff5722",
+  "featured": false
+}
+```
+
+### PUT /article-tags/:id
+Update tag (admin only).
+
+### DELETE /article-tags/:id
+Delete tag (admin only). Cannot delete if still used by articles.
+
+---
+
+# 11. GitHub Webhook Route
+
 ## POST /webhook/deploy
 
 Webhook deploy dari GitHub.
