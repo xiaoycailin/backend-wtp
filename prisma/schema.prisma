@@ -663,7 +663,9 @@ model ArticleComment {
   updatedAt DateTime @updatedAt
 
   // Jika ada reply
-  replies ArticleComment[] @relation("CommentReplies", fields: [parentId], references: [id])
+  replies          ArticleComment[] @relation("CommentReplies", fields: [parentId], references: [id])
+  articleComment   ArticleComment?  @relation(fields: [articleCommentId], references: [id])
+  articleCommentId String?
 
   @@index([articleId])
   @@index([userId])
