@@ -13,8 +13,8 @@ npm install --omit=dev
 echo "Generating prisma client..."
 npx prisma generate
 
-# echo "Building project..."
-# npm run build
+echo "Building project..."
+npm run build
 
 echo "Restarting service..."
 pm2 restart backendwtp || pm2 start node --name "backendwtp" -- -r tsconfig-paths/register dist/index.js
