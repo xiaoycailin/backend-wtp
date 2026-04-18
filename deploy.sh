@@ -8,7 +8,7 @@ git fetch origin
 git reset --hard origin/main
 
 echo "Installing dependencies..."
-npm install --omit=dev
+npm install --include=dev
 
 echo "Generating prisma client..."
 npx prisma generate
