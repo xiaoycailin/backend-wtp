@@ -21,6 +21,8 @@ enum BalanceType {
   POINTS
 }
 
+
+
 model UserBalance {
   id        Int         @id @default(autoincrement())
   user      User        @relation(fields: [userId], references: [id])
@@ -97,6 +99,10 @@ model User {
   moneyEntries     MoneyEntry[]
   pointEntries     PointEntry[]
   balanceTopups    BalanceTopup[]
+  articles         Article[]
+  articleComments ArticleComment[]
+  articleLikes     ArticleLike[]
+  articleBookmarks ArticleBookmark[]
 }
 
 model LoginSession {
@@ -569,4 +575,122 @@ model SiteConfigExtra {
 
   @@unique([siteConfigId, key])
   @@map("site_config_extra")
+}
+
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Article {
+  id          String    @id @default(uuid())
+  title       String
+  slug        String    @unique
+  content     String    // bisa JSON atau markdown
+  excerpt     String?   // summary
+  thumbnail   String?   // image URL
+  authorId    String?   // user ID
+  status      ArticleStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relationships
+  category    ArticleCategory? @relation(fields: [categoryId], references: [id])
+  categoryId  String?
+  tags        ArticleTag[]     // many-to-many dengan Tag
+  comments    ArticleComment[]
+  likes       ArticleLike[]
+  bookmarks   ArticleBookmark[]
+
+  // Metadata
+  views       Int       @default(0)
+  likesCount  Int       @default(0)
+  commentsCount Int    @default(0)
+  featured    Boolean   @default(false)
+  pinned      Boolean   @default(false)
+
+  @@index([slug])
+  @@index([categoryId])
+  @@index([authorId])
+  @@index([status])
+  @@index([publishedAt])
+}
+
+model ArticleCategory {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  articles    Article[]
+}
+
+model Tag {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  articles    ArticleTag[]
+}
+
+model ArticleTag {
+  article     Article   @relation(fields: [articleId], references: [id])
+  articleId   String
+  tag         Tag       @relation(fields: [tagId], references: [id])
+  tagId       String
+
+  createdAt   DateTime  @default(now())
+
+  @@id([articleId, tagId])
+}
+
+model ArticleComment {
+  id          String    @id @default(uuid())
+  article     Article   @relation(fields: [articleId], references: [id])
+  articleId   String
+  user        User?     @relation(fields: [userId], references: [id])
+  userId      String?
+  content     String
+  parentId    String?   // untuk nested comments
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Jika ada reply
+  replies     ArticleComment[] @relation("CommentReplies", fields: [parentId], references: [id])
+
+  @@index([articleId])
+  @@index([userId])
+  @@index([parentId])
+}
+
+model ArticleLike {
+  id          String    @id @default(uuid())
+  article     Article   @relation(fields: [articleId], references: [id])
+  articleId   String
+  user        User?     @relation(fields: [userId], references: [id])
+  userId      String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([articleId, userId])
+  @@index([articleId])
+  @@index([userId])
+}
+
+model ArticleBookmark {
+  id          String    @id @default(uuid())
+  article     Article   @relation(fields: [articleId], references: [id])
+  articleId   String
+  user        User?     @relation(fields: [userId], references: [id])
+  userId      String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([articleId, userId])
+  @@index([articleId])
+  @@index([userId])
 }
