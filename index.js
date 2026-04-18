@@ -49,3 +49,6 @@ const generateQRIS = (amount) => {
 
 generateQRIS()
 
+
+
+// edit triger deh
