@@ -597,6 +597,14 @@ model Article {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  // SEO Metadata
+  metaTitle       String? @db.VarChar(100) // SEO title (bisa berbeda dari title)
+  metaDescription String? @db.VarChar(200) // SEO description
+  metaKeywords    String? @db.VarChar(500) // comma-separated keywords
+  ogImage         String? // Open Graph image untuk social media
+  readingTime     Int?    @default(0) // estimated reading time (minutes)
+  featuredImages  Json? // gallery images untuk artikel
+
   // Relationships
   category   ArticleCategory?  @relation(fields: [categoryId], references: [id])
   categoryId String?
@@ -617,6 +625,8 @@ model Article {
   @@index([authorId])
   @@index([status])
   @@index([publishedAt])
+  @@index([featured])
+  @@index([pinned])
 }
 
 model ArticleCategory {
@@ -624,6 +634,7 @@ model ArticleCategory {
   name        String
   slug        String   @unique
   description String?
+  thumbnail   String? // image URL untuk kategori
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -631,12 +642,15 @@ model ArticleCategory {
 }
 
 model Tag {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String? // description untuk SEO
+  color       String? // hex color untuk tag visual
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  featured Boolean      @default(false)
   articles ArticleTag[]
 }
 
@@ -663,9 +677,8 @@ model ArticleComment {
   updatedAt DateTime @updatedAt
 
   // Jika ada reply
-  replies          ArticleComment[] @relation("CommentReplies", fields: [parentId], references: [id])
-  articleComment   ArticleComment?  @relation(fields: [articleCommentId], references: [id])
-  articleCommentId String?
+  replies   ArticleComment[] @relation("CommentReplies")
+  parent    ArticleComment? @relation("CommentReplies", fields: [parentId], references: [id])
 
   @@index([articleId])
   @@index([userId])

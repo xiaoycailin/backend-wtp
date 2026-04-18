@@ -27,6 +27,10 @@ const banner_route_1 = __importDefault(require("./routes/banner.route"));
 const cache_1 = __importDefault(require("./plugins/cache"));
 const promotion_route_1 = __importDefault(require("./routes/promotion.route"));
 const input_types_route_1 = __importDefault(require("./routes/input-types.route"));
+const article_route_1 = __importDefault(require("./routes/articles/article.route"));
+const article_category_route_1 = __importDefault(require("./routes/articles/article-category.route"));
+const article_tag_route_1 = __importDefault(require("./routes/articles/article-tag.route"));
+const article_comment_route_1 = __importDefault(require("./routes/articles/article-comment.route"));
 const apiRoutesPlugin = async (instance) => {
     await instance.register(user_route_1.default);
     await instance.register(category_route_1.default);
@@ -44,6 +48,10 @@ const apiRoutesPlugin = async (instance) => {
     await instance.register(banner_route_1.default);
     await instance.register(promotion_route_1.default);
     await instance.register(input_types_route_1.default);
+    await instance.register(article_route_1.default);
+    await instance.register(article_category_route_1.default);
+    await instance.register(article_tag_route_1.default);
+    await instance.register(article_comment_route_1.default);
     await instance.register(github_webhook_route_1.default);
 };
 const buildServer = async () => {

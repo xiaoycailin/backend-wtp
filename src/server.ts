@@ -26,6 +26,10 @@ import bannerRoute from "./routes/banner.route";
 import cachePlugin from "./plugins/cache";
 import promotionRoute from "./routes/promotion.route";
 import inputTypesRoute from "./routes/input-types.route";
+import articleRoute from "./routes/articles/article.route";
+import articleCategoryRoute from "./routes/articles/article-category.route";
+import articleTagRoute from "./routes/articles/article-tag.route";
+import articleCommentRoute from "./routes/articles/article-comment.route";
 
 const apiRoutesPlugin: FastifyPluginAsync = async (
   instance: FastifyInstance,
@@ -46,6 +50,10 @@ const apiRoutesPlugin: FastifyPluginAsync = async (
   await instance.register(bannerRoute);
   await instance.register(promotionRoute);
   await instance.register(inputTypesRoute);
+  await instance.register(articleRoute);
+  await instance.register(articleCategoryRoute);
+  await instance.register(articleTagRoute);
+  await instance.register(articleCommentRoute);
   await instance.register(githubWebhookRoute);
 };
 
