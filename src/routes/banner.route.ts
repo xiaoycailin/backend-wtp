@@ -26,23 +26,49 @@ function normalizeClickUrl(value?: string) {
   return trimmed ? trimmed : null;
 }
 
+// Helper invalidasi semua cache banner
+async function invalidateBannerCache(fastify: FastInstance) {
+  await fastify.cache.del([
+    "banners:all",
+    "banners:type:popup",
+    "banners:type:banner",
+  ]);
+}
+
 export default async function (fastify: FastInstance) {
+  // GET /banners
   fastify.get("/banners", {
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
       const { type } = (req.query ?? {}) as { type?: "popup" | "banner" };
+
+      const cacheKey = type ? `banners:type:${type}` : "banners:all";
+
+      // Cek cache
+      const cached = await fastify.cache.get<any[]>(cacheKey);
+      if (cached) return reply.send(cached);
 
       const items = await fastify.prisma.banners.findMany({
         where: type ? { type } : undefined,
         orderBy: [{ id: "desc" }],
       });
 
+      // Simpan cache TTL 1 jam (banner jarang berubah)
+      await fastify.cache.set(cacheKey, items, 3600);
+
       return reply.send(items);
     },
   });
 
+  // GET /banners/:id
   fastify.get("/banners/:id", {
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
+      const cacheKey = `banners:id:${id}`;
+
+      // Cek cache
+      const cached = await fastify.cache.get<any>(cacheKey);
+      if (cached) return reply.send(cached);
+
       const banner = await fastify.prisma.banners.findUnique({
         where: { id: Number(id) },
       });
@@ -51,10 +77,14 @@ export default async function (fastify: FastInstance) {
         return reply.status(404).send({ message: "Banner tidak ditemukan." });
       }
 
+      // Simpan cache TTL 1 jam
+      await fastify.cache.set(cacheKey, banner, 3600);
+
       return reply.send(banner);
     },
   });
 
+  // POST /banners
   fastify.post("/banners", {
     preHandler: authMiddleware,
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
@@ -77,6 +107,9 @@ export default async function (fastify: FastInstance) {
         },
       });
 
+      // Invalidasi cache list
+      await invalidateBannerCache(fastify);
+
       return reply.status(201).send({
         message: "Banner berhasil dibuat.",
         banner,
@@ -84,6 +117,7 @@ export default async function (fastify: FastInstance) {
     },
   });
 
+  // PUT /banners/:id
   fastify.put("/banners/:id", {
     preHandler: authMiddleware,
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
@@ -122,6 +156,10 @@ export default async function (fastify: FastInstance) {
         },
       });
 
+      // Invalidasi cache list + cache spesifik id ini
+      await invalidateBannerCache(fastify);
+      await fastify.cache.del(`banners:id:${id}`);
+
       return reply.send({
         message: "Banner berhasil diperbarui.",
         banner,
@@ -129,6 +167,7 @@ export default async function (fastify: FastInstance) {
     },
   });
 
+  // DELETE /banners/:id
   fastify.delete("/banners/:id", {
     preHandler: authMiddleware,
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
@@ -152,6 +191,10 @@ export default async function (fastify: FastInstance) {
       await fastify.prisma.banners.delete({
         where: { id: bannerId },
       });
+
+      // Invalidasi cache list + cache spesifik id ini
+      await invalidateBannerCache(fastify);
+      await fastify.cache.del(`banners:id:${id}`);
 
       return reply.send({
         message: "Banner berhasil dihapus.",

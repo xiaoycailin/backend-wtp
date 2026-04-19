@@ -1401,6 +1401,14 @@ export default async function (fastify: FastInstance) {
     handler: async (req, reply) => {
       const isAdmin = req.user?.role === "admin";
 
+      // Admin dapat data lebih lengkap, pisahkan cache key-nya
+      const cacheKey = isAdmin
+        ? "payments:available:admin"
+        : "payments:available:public";
+
+      const cached = await fastify.cache.get<any[]>(cacheKey);
+      if (cached) return reply.send(cached);
+
       const payments = await fastify.prisma.paymentMethod.findMany({
         where: isAdmin ? undefined : { paymentVisibility: "active" },
         select: {
@@ -1415,6 +1423,9 @@ export default async function (fastify: FastInstance) {
           source: isAdmin,
         },
       });
+
+      // TTL 10 menit — payment method jarang berubah
+      await fastify.cache.set(cacheKey, payments, 600);
 
       return reply.send(payments);
     },

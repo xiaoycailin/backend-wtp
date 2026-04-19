@@ -4,20 +4,31 @@ import { FastInstance } from "../utils/fastify";
 export default async function badgeRoute(fastify: FastInstance) {
   const ensureAdmin = (user: any, reply: any): boolean => {
     if (!user || user.role !== "admin") {
-      reply.status(403).send({ message: "You do not have permission to perform this action." });
+      reply.status(403).send({
+        message: "You do not have permission to perform this action.",
+      });
       return false;
     }
     return true;
   };
 
+  // GET /badges
   fastify.get("/badges", async (_req, reply) => {
+    const cacheKey = "badges:all";
+
+    const cached = await fastify.cache.get<any[]>(cacheKey);
+    if (cached) return reply.send(cached);
+
     const badges = await (fastify.prisma as any).badges.findMany({
       orderBy: { id: "desc" },
     });
 
+    await fastify.cache.set(cacheKey, badges, 3600); // TTL 1 jam
+
     return reply.send(badges);
   });
 
+  // POST /badges
   fastify.post("/badges", {
     preHandler: authMiddleware,
     handler: async (req, reply) => {
@@ -35,6 +46,8 @@ export default async function badgeRoute(fastify: FastInstance) {
         },
       });
 
+      await fastify.cache.del("badges:all"); // invalidasi
+
       return reply.status(201).send({
         message: "Badge berhasil dibuat.",
         ...badge,
@@ -42,6 +55,7 @@ export default async function badgeRoute(fastify: FastInstance) {
     },
   });
 
+  // PUT /badges/:id
   fastify.put("/badges/:id", {
     preHandler: authMiddleware,
     handler: async (req, reply) => {
@@ -66,6 +80,8 @@ export default async function badgeRoute(fastify: FastInstance) {
         },
       });
 
+      await fastify.cache.del("badges:all"); // invalidasi
+
       return reply.send({
         message: "Badge berhasil diupdate.",
         ...badge,
@@ -73,6 +89,7 @@ export default async function badgeRoute(fastify: FastInstance) {
     },
   });
 
+  // DELETE /badges/:id
   fastify.delete("/badges/:id", {
     preHandler: authMiddleware,
     handler: async (req, reply) => {
@@ -97,6 +114,8 @@ export default async function badgeRoute(fastify: FastInstance) {
       await (fastify.prisma as any).badges.delete({
         where: { id: badgeId },
       });
+
+      await fastify.cache.del("badges:all"); // invalidasi
 
       return reply.send({ message: "Badge berhasil dihapus." });
     },

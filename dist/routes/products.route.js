@@ -5,17 +5,6 @@ exports.default = productRoutes;
 const authMiddleware_1 = require("../plugins/authMiddleware");
 const fastify_1 = require("../utils/fastify");
 const activity_log_1 = require("../utils/activity-log");
-/**
- * Helper: serialise BigInt and Date values that Prisma returns into
- * JSON-safe types.  Registered as Prisma middleware.
- *
- * BUG-FIX: Moved the `$use` middleware registration into the global Prisma
- * plugin so it's only registered once. Registering it inside the route plugin
- * meant it was added every time `productRoutes` was registered and would
- * stack up on hot-reload.
- *
- * The helper is exported so it can be reused from prisma.ts.
- */
 const convertBigIntAndDate = (val) => {
     if (typeof val === "bigint") {
         return val.toString();
@@ -32,6 +21,15 @@ const convertBigIntAndDate = (val) => {
     return val;
 };
 exports.convertBigIntAndDate = convertBigIntAndDate;
+// Helper invalidasi semua cache products
+async function invalidateProductCache(fastify, productId, slug) {
+    const keys = ["products:list:public"]; // selalu invalidasi list
+    if (productId)
+        keys.push(`products:detail:${productId}`);
+    if (slug)
+        keys.push(`products:detail:${slug}`);
+    await fastify.cache.del(keys);
+}
 async function productRoutes(fastify) {
     const ensureSellerOrAdmin = (user, reply) => {
         if (!user || (user.role !== "seller" && user.role !== "admin")) {
@@ -59,14 +57,36 @@ async function productRoutes(fastify) {
         handler: async (req, reply) => {
             const user = req.user;
             const { dynamic } = req.params;
-            const where = {
-                OR: [{ id: dynamic }, { slug: dynamic }],
-            };
-            if (user?.role === "buyer" || !user) {
-                where.status = { in: ["PUBLISHED", "AVAILABLE", "SOLD"] };
+            const isPublic = user?.role === "buyer" || !user;
+            // Admin/seller tidak di-cache (bisa lihat semua status)
+            if (!isPublic) {
+                const where = {
+                    OR: [{ id: dynamic }, { slug: dynamic }],
+                };
+                const product = await fastify.prisma.products.findFirst({
+                    where,
+                    include: {
+                        sellerUser: { select: { id: true, displayName: true } },
+                        category: true,
+                        subCategory: true,
+                        flashSales: true,
+                    },
+                });
+                if (!product) {
+                    return reply.status(404).send({ message: "Product not found." });
+                }
+                return reply.send((0, exports.convertBigIntAndDate)(product));
             }
+            // Public: gunakan cache
+            const cacheKey = `products:detail:${dynamic}`;
+            const cached = await fastify.cache.get(cacheKey);
+            if (cached)
+                return reply.send(cached);
             const product = await fastify.prisma.products.findFirst({
-                where,
+                where: {
+                    OR: [{ id: dynamic }, { slug: dynamic }],
+                    status: { in: ["PUBLISHED", "AVAILABLE", "SOLD"] },
+                },
                 include: {
                     sellerUser: { select: { id: true, displayName: true } },
                     category: true,
@@ -77,20 +97,19 @@ async function productRoutes(fastify) {
             if (!product) {
                 return reply.status(404).send({ message: "Product not found." });
             }
-            return reply.send((0, exports.convertBigIntAndDate)(product));
+            const result = (0, exports.convertBigIntAndDate)(product);
+            await fastify.cache.set(cacheKey, result, 300); // TTL 5 menit
+            return reply.send(result);
         },
     });
     // ===========================
     // LIST PRODUCTS
     // ===========================
     fastify.get("/products/list", {
-        /**
-         * BUG-FIX: Replaced inline copy-pasted optional-auth logic with
-         * the reusable `optionalAuthMiddleware`.
-         */
         preHandler: authMiddleware_1.optionalAuthMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
+            const isPublic = user?.role === "buyer" || !user;
             const { q, id, category, sub, status, sort, page = 1, limit = 20, } = req.query;
             const where = {};
             if (q) {
@@ -102,29 +121,17 @@ async function productRoutes(fastify) {
                     { conditionNotes: { contains: search } },
                 ];
             }
-            if (category) {
+            if (category)
                 where.categoryId = category.trim();
-            }
-            if (sub) {
+            if (sub)
                 where.subCategoryId = sub.trim();
-            }
-            if (status) {
+            if (status)
                 where.status = status;
-            }
-            // Buyer / anonymous: restrict visible statuses
-            if (user?.role === "buyer" || !user) {
-                where.status = {
-                    in: ["PUBLISHED", "AVAILABLE", "SOLD"],
-                };
-            }
-            if (id) {
+            if (id)
                 where.id = id;
+            if (isPublic) {
+                where.status = { in: ["PUBLISHED", "AVAILABLE", "SOLD"] };
             }
-            /**
-             * BUG-FIX: Removed `console.log(where, "\n\n\n", user)`.
-             * Debug logging should use the Fastify logger, and certainly not
-             * in production code.
-             */
             const orderBy = sort === "latest"
                 ? { createdAt: "desc" }
                 : sort === "oldest"
@@ -136,6 +143,17 @@ async function productRoutes(fastify) {
                             : { createdAt: "desc" };
             const take = Math.min(Math.max(Number(limit) || 20, 1), 100);
             const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
+            // Cache hanya untuk public tanpa search query
+            // Request dengan filter/search terlalu bervariasi
+            const canCache = isPublic && !q && !id && !status;
+            const cacheKey = canCache
+                ? `products:list:public:${category || "all"}:${sub || "all"}:${sort || "latest"}:${page}:${take}`
+                : null;
+            if (cacheKey) {
+                const cached = await fastify.cache.get(cacheKey);
+                if (cached)
+                    return reply.send(cached);
+            }
             const [items, total] = await Promise.all([
                 fastify.prisma.products.findMany({
                     where,
@@ -150,12 +168,16 @@ async function productRoutes(fastify) {
                 }),
                 fastify.prisma.products.count({ where }),
             ]);
-            return reply.send({
+            const result = {
                 total,
                 page: Number(page),
                 limit: take,
                 items: items.map(exports.convertBigIntAndDate),
-            });
+            };
+            if (cacheKey) {
+                await fastify.cache.set(cacheKey, result, 120); // TTL 2 menit
+            }
+            return reply.send(result);
         },
     });
     // ===========================
@@ -177,10 +199,14 @@ async function productRoutes(fastify) {
             const normalizedStock = Number(stock ?? 10);
             const normalizedDiscType = discType === "percent" ? "percent" : "flat";
             if (Number.isNaN(normalizedDiscount) || normalizedDiscount <= 0) {
-                return reply.status(400).send({ message: "discount harus lebih dari 0." });
+                return reply
+                    .status(400)
+                    .send({ message: "discount harus lebih dari 0." });
             }
             if (normalizedDiscType === "percent" && normalizedDiscount > 100) {
-                return reply.status(400).send({ message: "discount percent maksimal 100." });
+                return reply
+                    .status(400)
+                    .send({ message: "discount percent maksimal 100." });
             }
             if (Number.isNaN(normalizedStock) || normalizedStock < 0) {
                 return reply.status(400).send({ message: "stock tidak valid." });
@@ -198,10 +224,10 @@ async function productRoutes(fastify) {
                     discount: normalizedDiscount,
                     discType: normalizedDiscType,
                 },
-                include: {
-                    products: true,
-                },
+                include: { products: true },
             });
+            // Invalidasi cache product yang kena flash sale
+            await invalidateProductCache(fastify, productId, product.slug);
             await (0, activity_log_1.createActivityLog)(fastify, {
                 actorUserId: user.id,
                 actorName: user.displayName ?? user.email ?? null,
@@ -230,13 +256,12 @@ async function productRoutes(fastify) {
     fastify.get("/products/flashsale", {
         preHandler: authMiddleware_1.authMiddleware,
         handler: async (_req, reply) => {
+            // Admin only — tidak di-cache
             const flashsale = await fastify.prisma.flashSale.findMany({
                 orderBy: { createdAt: "desc" },
                 include: {
                     products: {
-                        include: {
-                            subCategory: true,
-                        },
+                        include: { subCategory: true },
                     },
                 },
             });
@@ -257,22 +282,31 @@ async function productRoutes(fastify) {
             const { discount, discType, stock } = req.body;
             const flashSaleId = Number(id);
             if (!Number.isInteger(flashSaleId) || flashSaleId <= 0) {
-                return reply.status(400).send({ message: "flash sale id tidak valid." });
+                return reply
+                    .status(400)
+                    .send({ message: "flash sale id tidak valid." });
             }
             const existing = await fastify.prisma.flashSale.findUnique({
                 where: { id: flashSaleId },
             });
             if (!existing) {
-                return reply.status(404).send({ message: "Flash sale tidak ditemukan." });
+                return reply
+                    .status(404)
+                    .send({ message: "Flash sale tidak ditemukan." });
             }
             const data = {};
             if (discount !== undefined) {
                 const normalizedDiscount = Number(discount);
                 if (Number.isNaN(normalizedDiscount) || normalizedDiscount <= 0) {
-                    return reply.status(400).send({ message: "discount harus lebih dari 0." });
+                    return reply
+                        .status(400)
+                        .send({ message: "discount harus lebih dari 0." });
                 }
-                if ((discType ?? existing.discType) === "percent" && normalizedDiscount > 100) {
-                    return reply.status(400).send({ message: "discount percent maksimal 100." });
+                if ((discType ?? existing.discType) === "percent" &&
+                    normalizedDiscount > 100) {
+                    return reply
+                        .status(400)
+                        .send({ message: "discount percent maksimal 100." });
                 }
                 data.discount = normalizedDiscount;
             }
@@ -293,13 +327,17 @@ async function productRoutes(fastify) {
                 where: { id: flashSaleId },
                 data,
                 include: {
-                    products: {
-                        include: {
-                            subCategory: true,
-                        },
-                    },
+                    products: { include: { subCategory: true } },
                 },
             });
+            // Invalidasi cache product terkait
+            if (existing.productId) {
+                const product = await fastify.prisma.products.findUnique({
+                    where: { id: existing.productId },
+                    select: { slug: true },
+                });
+                await invalidateProductCache(fastify, existing.productId, product?.slug);
+            }
             await (0, activity_log_1.createActivityLog)(fastify, {
                 actorUserId: user.id,
                 actorName: user.displayName ?? user.email ?? null,
@@ -328,17 +366,27 @@ async function productRoutes(fastify) {
             const { id } = req.params;
             const flashSaleId = Number(id);
             if (!Number.isInteger(flashSaleId) || flashSaleId <= 0) {
-                return reply.status(400).send({ message: "flash sale id tidak valid." });
+                return reply
+                    .status(400)
+                    .send({ message: "flash sale id tidak valid." });
             }
             const existing = await fastify.prisma.flashSale.findUnique({
                 where: { id: flashSaleId },
             });
             if (!existing) {
-                return reply.status(404).send({ message: "Flash sale tidak ditemukan." });
+                return reply
+                    .status(404)
+                    .send({ message: "Flash sale tidak ditemukan." });
             }
-            await fastify.prisma.flashSale.delete({
-                where: { id: flashSaleId },
-            });
+            await fastify.prisma.flashSale.delete({ where: { id: flashSaleId } });
+            // Invalidasi cache product terkait
+            if (existing.productId) {
+                const product = await fastify.prisma.products.findUnique({
+                    where: { id: existing.productId },
+                    select: { slug: true },
+                });
+                await invalidateProductCache(fastify, existing.productId, product?.slug);
+            }
             await (0, activity_log_1.createActivityLog)(fastify, {
                 actorUserId: user.id,
                 actorName: user.displayName ?? user.email ?? null,
@@ -355,9 +403,7 @@ async function productRoutes(fastify) {
                     stock: existing.stock,
                 },
             });
-            return reply.send({
-                message: "Flash sale berhasil dihapus.",
-            });
+            return reply.send({ message: "Flash sale berhasil dihapus." });
         },
     });
     // ===========================
@@ -382,9 +428,9 @@ async function productRoutes(fastify) {
                 where: { id: subCategoryId },
             });
             if (!subCategoryExists) {
-                return reply.status(404).send({
-                    message: "Invalid subCategoryId provided.",
-                });
+                return reply
+                    .status(404)
+                    .send({ message: "Invalid subCategoryId provided." });
             }
             const newProduct = await fastify.prisma.products.create({
                 data: {
@@ -404,6 +450,8 @@ async function productRoutes(fastify) {
                     isSpecial: special,
                 },
             });
+            // Invalidasi list cache
+            await fastify.cache.del("products:list:public");
             return reply.status(201).send({
                 message: "Product successfully created.",
                 ...(0, exports.convertBigIntAndDate)(newProduct),
@@ -463,6 +511,11 @@ async function productRoutes(fastify) {
                 where: { id: productId },
                 data: updateData,
             });
+            // Invalidasi cache detail + list
+            await invalidateProductCache(fastify, productId, product.slug);
+            if (updateData.slug) {
+                await fastify.cache.del(`products:detail:${updateData.slug}`);
+            }
             return reply.send({
                 message: "Product updated successfully.",
                 ...(0, exports.convertBigIntAndDate)(updatedProduct),
@@ -485,12 +538,10 @@ async function productRoutes(fastify) {
             }
             if (!ensureOwnerOrAdmin(user, product.sellerUserId, reply))
                 return;
-            await fastify.prisma.products.delete({
-                where: { id: productId },
-            });
-            return reply.send({
-                message: "Product deleted successfully.",
-            });
+            await fastify.prisma.products.delete({ where: { id: productId } });
+            // Invalidasi cache
+            await invalidateProductCache(fastify, productId, product.slug);
+            return reply.send({ message: "Product deleted successfully." });
         },
     });
     // ===========================
@@ -500,16 +551,6 @@ async function productRoutes(fastify) {
         preHandler: authMiddleware_1.authMiddleware,
         handler: async (req, reply) => {
             const user = req.user;
-            /**
-             * BUG-FIX:
-             *  1. Used `===` instead of `==` for strict comparison.
-             *  2. Changed status 401 → 403 (Forbidden) for authorization failures.
-             *     401 means "not authenticated", 403 means "authenticated but not
-             *     allowed".
-             *  3. Fixed typo "allready" → "already".
-             *  4. Stopped sending raw `Error` objects via `reply.send(new Error(...))`
-             *     — Fastify serialises them poorly. Send a plain object instead.
-             */
             if (user?.role !== "admin") {
                 return reply.status(403).send({
                     message: "You do not have permission to perform this action.",
@@ -535,6 +576,8 @@ async function productRoutes(fastify) {
                     approvedDate: new Date(),
                 },
             });
+            // Produk baru published, invalidasi list
+            await invalidateProductCache(fastify, productId, product.slug);
             return reply.send({
                 message: "Product has been approved.",
                 ...(0, exports.convertBigIntAndDate)(updated),

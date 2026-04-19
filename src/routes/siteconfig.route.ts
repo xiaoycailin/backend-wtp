@@ -2,7 +2,6 @@ import { FastInstance } from "../utils/fastify";
 import { z } from "zod";
 import { authMiddleware } from "../plugins/authMiddleware";
 import { ensureAdmin } from "../utils/auth";
-import { cacheMiddleware, invalidateCache } from "../utils/cache-utils";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 const UpdateSiteConfigSchema = z.object({
@@ -82,10 +81,16 @@ function forbidNonAdmin(req: any, reply: any) {
   return false;
 }
 
+const CACHE_KEY = "siteconfig:full";
+const CACHE_TTL = 3600; // 1 jam — siteconfig sangat jarang berubah
+
 export default async function (fastify: FastInstance) {
+  // GET /site-config
   fastify.get("/site-config", {
-    // preHandler: cacheMiddleware(fastify, 300),
     handler: async (_req: FastifyRequest, reply: FastifyReply) => {
+      const cached = await fastify.cache.get<any>(CACHE_KEY);
+      if (cached) return reply.send(cached);
+
       const config = await fastify.prisma.siteConfig.findFirst({
         where: { id: 1 },
       });
@@ -108,16 +113,21 @@ export default async function (fastify: FastInstance) {
         },
       });
 
-      return reply.send({
+      const result = {
         ...config,
         extras: extras.map((extra) => ({
           ...extra,
           value: extra.isSecret ? "••••••••" : extra.value,
         })),
-      });
+      };
+
+      await fastify.cache.set(CACHE_KEY, result, CACHE_TTL);
+
+      return reply.send(result);
     },
   });
 
+  // PATCH /site-config
   fastify.patch("/site-config", {
     preHandler: authMiddleware,
     handler: async (req, reply) => {
@@ -166,7 +176,8 @@ export default async function (fastify: FastInstance) {
         }
       }
 
-      // invalidateCache(fastify, "/site-config");
+      // Invalidasi cache setelah update
+      await fastify.cache.del(CACHE_KEY);
 
       return reply.send({
         message: "Site config berhasil diperbarui.",
@@ -175,6 +186,7 @@ export default async function (fastify: FastInstance) {
     },
   });
 
+  // DELETE /site-config/extras/:key
   fastify.delete("/site-config/extras/:key", {
     preHandler: authMiddleware,
     handler: async (req, reply) => {
@@ -195,6 +207,9 @@ export default async function (fastify: FastInstance) {
       await fastify.prisma.siteConfigExtra.delete({
         where: { siteConfigId_key: { siteConfigId: 1, key } },
       });
+
+      // Invalidasi cache karena extras berubah
+      await fastify.cache.del(CACHE_KEY);
 
       return reply.send({
         message: `Extra config "${key}" berhasil dihapus.`,

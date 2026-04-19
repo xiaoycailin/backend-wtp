@@ -27,7 +27,16 @@ async function default_1(fastify) {
         handler: async (req, reply) => {
             const { productInclude } = req.query;
             const includePriceFrom = productInclude === "true";
+            // Cache key berbeda tergantung query param
+            const cacheKey = `category:list:${includePriceFrom}`;
             try {
+                // 1. Cek cache dulu
+                const cached = await fastify.cache.get(cacheKey);
+                if (cached) {
+                    fastify.log.info(`Cache HIT: ${cacheKey}`);
+                    return reply.send(cached);
+                }
+                fastify.log.info(`Cache MISS: ${cacheKey}`);
                 const categories = await fastify.prisma.category.findMany({
                     orderBy: {
                         position: "asc",
@@ -61,7 +70,6 @@ async function default_1(fastify) {
                         },
                     },
                 });
-                // map ke priceFrom dan buang products
                 const result = categories.map((cat) => ({
                     ...cat,
                     subCategories: cat.subCategories.map((sub) => {
@@ -72,7 +80,10 @@ async function default_1(fastify) {
                         return { ...rest, priceFrom };
                     }),
                 }));
-                return reply.send((0, products_route_1.convertBigIntAndDate)(result));
+                const finalResult = (0, products_route_1.convertBigIntAndDate)(result);
+                // 2. Simpan ke cache (TTL 5 menit)
+                await fastify.cache.set(cacheKey, finalResult, 300);
+                return reply.send(finalResult);
             }
             catch (err) {
                 fastify.log.error(err);

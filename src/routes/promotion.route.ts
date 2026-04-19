@@ -47,12 +47,10 @@ function toNullableString(value?: string | null) {
 function normalizeDate(value?: string | null) {
   const trimmed = value?.trim();
   if (!trimmed) return null;
-
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) {
     return { error: "Tanggal expired tidak valid." } as const;
   }
-
   return parsed;
 }
 
@@ -82,7 +80,6 @@ async function validateRelations(
       select: { id: true, categoryId: true },
     });
     if (!exists) return "Sub kategori promo tidak ditemukan.";
-
     if (data.categoryId && exists.categoryId !== data.categoryId) {
       return "Sub kategori tidak cocok dengan kategori yang dipilih.";
     }
@@ -128,17 +125,38 @@ function buildPromotionPayload(data: z.infer<typeof PromotionSchema>) {
   };
 }
 
+// Helper invalidasi semua cache promotion
+async function invalidatePromotionCache(
+  fastify: FastInstance,
+  promotionId?: number,
+) {
+  const keys = ["promotions:list"];
+  if (promotionId) keys.push(`promotions:id:${promotionId}`);
+  await fastify.cache.del(keys);
+}
+
 export default async function promotionRoute(fastify: FastInstance) {
+  // GET /promotions
   fastify.get("/promotions", {
     handler: async (_req: FastifyRequest, reply: FastifyReply) => {
+      const cacheKey = "promotions:list";
+
+      const cached = await fastify.cache.get<any[]>(cacheKey);
+      if (cached) return reply.send(cached);
+
       const promotions = await fastify.prisma.promotionsCode.findMany({
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       });
 
-      return reply.send(convertBigIntAndDate(promotions));
+      const result = convertBigIntAndDate(promotions);
+      // TTL 60 detik — used count berubah tiap transaksi
+      await fastify.cache.set(cacheKey, result, 60);
+
+      return reply.send(result);
     },
   });
 
+  // GET /promotions/:id
   fastify.get("/promotions/:id", {
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
       const { id } = req.params as { id: string };
@@ -147,6 +165,11 @@ export default async function promotionRoute(fastify: FastInstance) {
       if (!Number.isInteger(promotionId) || promotionId <= 0) {
         return reply.status(400).send({ message: "ID promotion tidak valid." });
       }
+
+      const cacheKey = `promotions:id:${promotionId}`;
+
+      const cached = await fastify.cache.get<any>(cacheKey);
+      if (cached) return reply.send(cached);
 
       const promotion = await fastify.prisma.promotionsCode.findUnique({
         where: { id: promotionId },
@@ -158,9 +181,14 @@ export default async function promotionRoute(fastify: FastInstance) {
           .send({ message: "Promotion tidak ditemukan." });
       }
 
-      return reply.send(convertBigIntAndDate(promotion));
+      const result = convertBigIntAndDate(promotion);
+      await fastify.cache.set(cacheKey, result, 60); // TTL 60 detik
+
+      return reply.send(result);
     },
   });
+
+  // POST /promotions/apply — real-time check, tidak di-cache
   fastify.post("/promotions/apply", {
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
       const { id, itemId, flashId } = req.body as any;
@@ -175,23 +203,17 @@ export default async function promotionRoute(fastify: FastInstance) {
         const flashSaleExist = await fastify.prisma.flashSale.findFirst({
           where: {
             OR: [
-              {
-                productId: typeof itemId == "string" ? itemId : undefined,
-              },
-              {
-                id: typeof flashId == "number" ? flashId : undefined,
-              },
-              {
-                productId: typeof flashId == "string" ? flashId : undefined,
-              },
+              { productId: typeof itemId == "string" ? itemId : undefined },
+              { id: typeof flashId == "number" ? flashId : undefined },
+              { productId: typeof flashId == "string" ? flashId : undefined },
             ],
           },
         });
 
         if (flashSaleExist && !promoExist.allowFlashSale)
-          return reply.status(406).send({
-            message: "Tidak bisa digabung flash sale.",
-          });
+          return reply
+            .status(406)
+            .send({ message: "Tidak bisa digabung flash sale." });
 
         return reply.send({ message: "Kode promo berhasil di gunakan." });
       }
@@ -205,6 +227,7 @@ export default async function promotionRoute(fastify: FastInstance) {
     },
   });
 
+  // POST /promotions
   fastify.post("/promotions", {
     preHandler: authMiddleware,
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
@@ -212,10 +235,9 @@ export default async function promotionRoute(fastify: FastInstance) {
 
       const parsed = PromotionSchema.safeParse(req.body);
       if (!parsed.success) {
-        return reply.status(400).send({
-          message: "Validasi gagal.",
-          errors: parsed.error.flatten(),
-        });
+        return reply
+          .status(400)
+          .send({ message: "Validasi gagal.", errors: parsed.error.flatten() });
       }
 
       const payload = buildPromotionPayload(parsed.data);
@@ -224,15 +246,14 @@ export default async function promotionRoute(fastify: FastInstance) {
       }
 
       if (payload.discType === "percent" && payload.value > 100) {
-        return reply.status(400).send({
-          message: "Diskon percent maksimal 100.",
-        });
+        return reply
+          .status(400)
+          .send({ message: "Diskon percent maksimal 100." });
       }
 
       const relationError = await validateRelations(fastify, parsed.data);
-      if (relationError) {
+      if (relationError)
         return reply.status(400).send({ message: relationError });
-      }
 
       const exists = await fastify.prisma.promotionsCode.count({
         where: { code: payload.code },
@@ -246,6 +267,8 @@ export default async function promotionRoute(fastify: FastInstance) {
         data: payload,
       });
 
+      await invalidatePromotionCache(fastify); // invalidasi list
+
       return reply.status(201).send({
         message: "Promotion berhasil dibuat.",
         promotion: convertBigIntAndDate(promotion),
@@ -253,6 +276,7 @@ export default async function promotionRoute(fastify: FastInstance) {
     },
   });
 
+  // PUT /promotions/:id
   fastify.put("/promotions/:id", {
     preHandler: authMiddleware,
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
@@ -277,10 +301,9 @@ export default async function promotionRoute(fastify: FastInstance) {
 
       const parsed = PromotionSchema.safeParse(req.body);
       if (!parsed.success) {
-        return reply.status(400).send({
-          message: "Validasi gagal.",
-          errors: parsed.error.flatten(),
-        });
+        return reply
+          .status(400)
+          .send({ message: "Validasi gagal.", errors: parsed.error.flatten() });
       }
 
       const payload = buildPromotionPayload(parsed.data);
@@ -289,21 +312,17 @@ export default async function promotionRoute(fastify: FastInstance) {
       }
 
       if (payload.discType === "percent" && payload.value > 100) {
-        return reply.status(400).send({
-          message: "Diskon percent maksimal 100.",
-        });
+        return reply
+          .status(400)
+          .send({ message: "Diskon percent maksimal 100." });
       }
 
       const relationError = await validateRelations(fastify, parsed.data);
-      if (relationError) {
+      if (relationError)
         return reply.status(400).send({ message: relationError });
-      }
 
       const duplicate = await fastify.prisma.promotionsCode.count({
-        where: {
-          id: { not: promotionId },
-          code: payload.code,
-        },
+        where: { id: { not: promotionId }, code: payload.code },
       });
 
       if (duplicate > 0) {
@@ -315,6 +334,8 @@ export default async function promotionRoute(fastify: FastInstance) {
         data: payload,
       });
 
+      await invalidatePromotionCache(fastify, promotionId); // invalidasi list + id ini
+
       return reply.send({
         message: "Promotion berhasil diperbarui.",
         promotion: convertBigIntAndDate(promotion),
@@ -322,6 +343,7 @@ export default async function promotionRoute(fastify: FastInstance) {
     },
   });
 
+  // DELETE /promotions/:id
   fastify.delete("/promotions/:id", {
     preHandler: authMiddleware,
     handler: async (req: FastifyRequest, reply: FastifyReply) => {
@@ -348,9 +370,9 @@ export default async function promotionRoute(fastify: FastInstance) {
         where: { id: promotionId },
       });
 
-      return reply.send({
-        message: "Promotion berhasil dihapus.",
-      });
+      await invalidatePromotionCache(fastify, promotionId); // invalidasi list + id ini
+
+      return reply.send({ message: "Promotion berhasil dihapus." });
     },
   });
 }

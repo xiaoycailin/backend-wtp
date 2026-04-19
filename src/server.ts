@@ -95,6 +95,23 @@ const buildServer = async () => {
     };
   });
 
+  app.get("/health/redis", async (_req, reply) => {
+    try {
+      await app.redis.ping();
+      return {
+        ok: true,
+        redis: "reachable",
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      return reply.status(500).send({
+        ok: false,
+        redis: "unreachable",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
   app.get("/health/db", async (_req, reply) => {
     try {
       await app.prisma.$queryRaw`SELECT 1`;

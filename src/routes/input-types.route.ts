@@ -194,10 +194,13 @@ export default async function (fastify: FastInstance) {
   });
 
   // GET /input-types/subcategory/:subCategoryId (public)
-  // This will be used by order page to fetch inputs for a subcategory
   fastify.get("/input-types/subcategory/:subCategoryId", {
     handler: async (req, reply) => {
       const { subCategoryId } = req.params as { subCategoryId: string };
+      const cacheKey = `input-types:subcategory:${subCategoryId}`;
+
+      const cached = await fastify.cache.get<any[]>(cacheKey);
+      if (cached) return reply.send(cached);
 
       const inputs = await fastify.prisma.inputTypes.findMany({
         where: { subCategoryId },
@@ -216,15 +219,21 @@ export default async function (fastify: FastInstance) {
         },
       });
 
-      return reply.send(serializeData(inputs));
+      const result = serializeData(inputs);
+      await fastify.cache.set(cacheKey, result, 3600); // TTL 1 jam
+
+      return reply.send(result);
     },
   });
 
   // GET /input-types/subcategory-slug/:slug (public)
-  // Alternative: get inputs by subcategory slug
   fastify.get("/input-types/subcategory-slug/:slug", {
     handler: async (req, reply) => {
       const { slug } = req.params as { slug: string };
+      const cacheKey = `input-types:slug:${slug}`;
+
+      const cached = await fastify.cache.get<any[]>(cacheKey);
+      if (cached) return reply.send(cached);
 
       const subCategory = await fastify.prisma.subCategory.findUnique({
         where: { slug },
@@ -252,7 +261,10 @@ export default async function (fastify: FastInstance) {
         },
       });
 
-      return reply.send(serializeData(inputs));
+      const result = serializeData(inputs);
+      await fastify.cache.set(cacheKey, result, 3600); // TTL 1 jam
+
+      return reply.send(result);
     },
   });
 }

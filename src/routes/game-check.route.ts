@@ -12,10 +12,17 @@ export default async function gameCheckRoute(fastify: FastInstance) {
   // ===========================
   fastify.get("/games/supported", {
     handler: async (_req, reply) => {
-      return reply.send(getSupportedGames());
+      const cacheKey = "games:supported";
+
+      const cached = await fastify.cache.get<any[]>(cacheKey);
+      if (cached) return reply.send(cached);
+
+      const data = getSupportedGames();
+      await fastify.cache.set(cacheKey, data, 86400); // TTL 24 jam
+
+      return reply.send(data);
     },
   });
-
   // ===========================
   // CHECK GAME ID / USERNAME
   // ===========================
@@ -82,7 +89,8 @@ export default async function gameCheckRoute(fastify: FastInstance) {
           url: req.url,
           provider: (error as any)?.provider ?? game,
           requestPayload: { game, userId, zoneId },
-          responsePayload: (error as any)?.responsePayload ?? (error as any)?.data ?? null,
+          responsePayload:
+            (error as any)?.responsePayload ?? (error as any)?.data ?? null,
           errorStack: error?.stack ?? null,
         });
         return reply.status(502).send({

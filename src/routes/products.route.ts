@@ -4,19 +4,7 @@ import {
 } from "../plugins/authMiddleware";
 import { FastInstance, slugify } from "../utils/fastify";
 import { createActivityLog } from "../utils/activity-log";
-import { cacheMiddleware } from "../utils/cache-utils";
 
-/**
- * Helper: serialise BigInt and Date values that Prisma returns into
- * JSON-safe types.  Registered as Prisma middleware.
- *
- * BUG-FIX: Moved the `$use` middleware registration into the global Prisma
- * plugin so it's only registered once. Registering it inside the route plugin
- * meant it was added every time `productRoutes` was registered and would
- * stack up on hot-reload.
- *
- * The helper is exported so it can be reused from prisma.ts.
- */
 export const convertBigIntAndDate = (val: any): any => {
   if (typeof val === "bigint") {
     return val.toString();
@@ -31,6 +19,18 @@ export const convertBigIntAndDate = (val: any): any => {
   }
   return val;
 };
+
+// Helper invalidasi semua cache products
+async function invalidateProductCache(
+  fastify: FastInstance,
+  productId?: string,
+  slug?: string,
+) {
+  const keys = ["products:list:public"]; // selalu invalidasi list
+  if (productId) keys.push(`products:detail:${productId}`);
+  if (slug) keys.push(`products:detail:${slug}`);
+  await fastify.cache.del(keys);
+}
 
 export default async function productRoutes(fastify: FastInstance) {
   const ensureSellerOrAdmin = (user: any, reply: any): boolean => {
@@ -65,17 +65,41 @@ export default async function productRoutes(fastify: FastInstance) {
     handler: async (req, reply) => {
       const user = req.user;
       const { dynamic } = req.params as { dynamic: string };
+      const isPublic = user?.role === "buyer" || !user;
 
-      const where: any = {
-        OR: [{ id: dynamic }, { slug: dynamic }],
-      };
+      // Admin/seller tidak di-cache (bisa lihat semua status)
+      if (!isPublic) {
+        const where: any = {
+          OR: [{ id: dynamic }, { slug: dynamic }],
+        };
 
-      if (user?.role === "buyer" || !user) {
-        where.status = { in: ["PUBLISHED", "AVAILABLE", "SOLD"] };
+        const product = await fastify.prisma.products.findFirst({
+          where,
+          include: {
+            sellerUser: { select: { id: true, displayName: true } },
+            category: true,
+            subCategory: true,
+            flashSales: true,
+          },
+        });
+
+        if (!product) {
+          return reply.status(404).send({ message: "Product not found." });
+        }
+
+        return reply.send(convertBigIntAndDate(product));
       }
 
+      // Public: gunakan cache
+      const cacheKey = `products:detail:${dynamic}`;
+      const cached = await fastify.cache.get<any>(cacheKey);
+      if (cached) return reply.send(cached);
+
       const product = await fastify.prisma.products.findFirst({
-        where,
+        where: {
+          OR: [{ id: dynamic }, { slug: dynamic }],
+          status: { in: ["PUBLISHED", "AVAILABLE", "SOLD"] },
+        },
         include: {
           sellerUser: { select: { id: true, displayName: true } },
           category: true,
@@ -88,7 +112,10 @@ export default async function productRoutes(fastify: FastInstance) {
         return reply.status(404).send({ message: "Product not found." });
       }
 
-      return reply.send(convertBigIntAndDate(product));
+      const result = convertBigIntAndDate(product);
+      await fastify.cache.set(cacheKey, result, 300); // TTL 5 menit
+
+      return reply.send(result);
     },
   });
 
@@ -96,13 +123,10 @@ export default async function productRoutes(fastify: FastInstance) {
   // LIST PRODUCTS
   // ===========================
   fastify.get("/products/list", {
-    /**
-     * BUG-FIX: Replaced inline copy-pasted optional-auth logic with
-     * the reusable `optionalAuthMiddleware`.
-     */
     preHandler: optionalAuthMiddleware,
     handler: async (req, reply) => {
       const user = req.user;
+      const isPublic = user?.role === "buyer" || !user;
 
       const {
         q,
@@ -127,34 +151,14 @@ export default async function productRoutes(fastify: FastInstance) {
         ];
       }
 
-      if (category) {
-        where.categoryId = category.trim();
-      }
+      if (category) where.categoryId = category.trim();
+      if (sub) where.subCategoryId = sub.trim();
+      if (status) where.status = status;
+      if (id) where.id = id;
 
-      if (sub) {
-        where.subCategoryId = sub.trim();
+      if (isPublic) {
+        where.status = { in: ["PUBLISHED", "AVAILABLE", "SOLD"] };
       }
-
-      if (status) {
-        where.status = status;
-      }
-
-      // Buyer / anonymous: restrict visible statuses
-      if (user?.role === "buyer" || !user) {
-        where.status = {
-          in: ["PUBLISHED", "AVAILABLE", "SOLD"],
-        };
-      }
-
-      if (id) {
-        where.id = id;
-      }
-
-      /**
-       * BUG-FIX: Removed `console.log(where, "\n\n\n", user)`.
-       * Debug logging should use the Fastify logger, and certainly not
-       * in production code.
-       */
 
       const orderBy: any =
         sort === "latest"
@@ -169,6 +173,18 @@ export default async function productRoutes(fastify: FastInstance) {
 
       const take = Math.min(Math.max(Number(limit) || 20, 1), 100);
       const skip = (Math.max(Number(page) || 1, 1) - 1) * take;
+
+      // Cache hanya untuk public tanpa search query
+      // Request dengan filter/search terlalu bervariasi
+      const canCache = isPublic && !q && !id && !status;
+      const cacheKey = canCache
+        ? `products:list:public:${category || "all"}:${sub || "all"}:${sort || "latest"}:${page}:${take}`
+        : null;
+
+      if (cacheKey) {
+        const cached = await fastify.cache.get<any>(cacheKey);
+        if (cached) return reply.send(cached);
+      }
 
       const [items, total] = await Promise.all([
         fastify.prisma.products.findMany({
@@ -185,12 +201,18 @@ export default async function productRoutes(fastify: FastInstance) {
         fastify.prisma.products.count({ where }),
       ]);
 
-      return reply.send({
+      const result = {
         total,
         page: Number(page),
         limit: take,
         items: items.map(convertBigIntAndDate),
-      });
+      };
+
+      if (cacheKey) {
+        await fastify.cache.set(cacheKey, result, 120); // TTL 2 menit
+      }
+
+      return reply.send(result);
     },
   });
 
@@ -215,11 +237,15 @@ export default async function productRoutes(fastify: FastInstance) {
       const normalizedDiscType = discType === "percent" ? "percent" : "flat";
 
       if (Number.isNaN(normalizedDiscount) || normalizedDiscount <= 0) {
-        return reply.status(400).send({ message: "discount harus lebih dari 0." });
+        return reply
+          .status(400)
+          .send({ message: "discount harus lebih dari 0." });
       }
 
       if (normalizedDiscType === "percent" && normalizedDiscount > 100) {
-        return reply.status(400).send({ message: "discount percent maksimal 100." });
+        return reply
+          .status(400)
+          .send({ message: "discount percent maksimal 100." });
       }
 
       if (Number.isNaN(normalizedStock) || normalizedStock < 0) {
@@ -241,10 +267,11 @@ export default async function productRoutes(fastify: FastInstance) {
           discount: normalizedDiscount,
           discType: normalizedDiscType,
         },
-        include: {
-          products: true,
-        },
+        include: { products: true },
       });
+
+      // Invalidasi cache product yang kena flash sale
+      await invalidateProductCache(fastify, productId, product.slug);
 
       await createActivityLog(fastify, {
         actorUserId: user.id,
@@ -276,13 +303,12 @@ export default async function productRoutes(fastify: FastInstance) {
   fastify.get("/products/flashsale", {
     preHandler: authMiddleware,
     handler: async (_req, reply) => {
+      // Admin only — tidak di-cache
       const flashsale = await fastify.prisma.flashSale.findMany({
         orderBy: { createdAt: "desc" },
         include: {
           products: {
-            include: {
-              subCategory: true,
-            },
+            include: { subCategory: true },
           },
         },
       });
@@ -305,7 +331,9 @@ export default async function productRoutes(fastify: FastInstance) {
       const flashSaleId = Number(id);
 
       if (!Number.isInteger(flashSaleId) || flashSaleId <= 0) {
-        return reply.status(400).send({ message: "flash sale id tidak valid." });
+        return reply
+          .status(400)
+          .send({ message: "flash sale id tidak valid." });
       }
 
       const existing = await fastify.prisma.flashSale.findUnique({
@@ -313,7 +341,9 @@ export default async function productRoutes(fastify: FastInstance) {
       });
 
       if (!existing) {
-        return reply.status(404).send({ message: "Flash sale tidak ditemukan." });
+        return reply
+          .status(404)
+          .send({ message: "Flash sale tidak ditemukan." });
       }
 
       const data: Record<string, unknown> = {};
@@ -321,10 +351,17 @@ export default async function productRoutes(fastify: FastInstance) {
       if (discount !== undefined) {
         const normalizedDiscount = Number(discount);
         if (Number.isNaN(normalizedDiscount) || normalizedDiscount <= 0) {
-          return reply.status(400).send({ message: "discount harus lebih dari 0." });
+          return reply
+            .status(400)
+            .send({ message: "discount harus lebih dari 0." });
         }
-        if ((discType ?? existing.discType) === "percent" && normalizedDiscount > 100) {
-          return reply.status(400).send({ message: "discount percent maksimal 100." });
+        if (
+          (discType ?? existing.discType) === "percent" &&
+          normalizedDiscount > 100
+        ) {
+          return reply
+            .status(400)
+            .send({ message: "discount percent maksimal 100." });
         }
         data.discount = normalizedDiscount;
       }
@@ -348,13 +385,22 @@ export default async function productRoutes(fastify: FastInstance) {
         where: { id: flashSaleId },
         data,
         include: {
-          products: {
-            include: {
-              subCategory: true,
-            },
-          },
+          products: { include: { subCategory: true } },
         },
       });
+
+      // Invalidasi cache product terkait
+      if (existing.productId) {
+        const product = await fastify.prisma.products.findUnique({
+          where: { id: existing.productId },
+          select: { slug: true },
+        });
+        await invalidateProductCache(
+          fastify,
+          existing.productId,
+          product?.slug,
+        );
+      }
 
       await createActivityLog(fastify, {
         actorUserId: user.id,
@@ -386,7 +432,9 @@ export default async function productRoutes(fastify: FastInstance) {
       const flashSaleId = Number(id);
 
       if (!Number.isInteger(flashSaleId) || flashSaleId <= 0) {
-        return reply.status(400).send({ message: "flash sale id tidak valid." });
+        return reply
+          .status(400)
+          .send({ message: "flash sale id tidak valid." });
       }
 
       const existing = await fastify.prisma.flashSale.findUnique({
@@ -394,12 +442,25 @@ export default async function productRoutes(fastify: FastInstance) {
       });
 
       if (!existing) {
-        return reply.status(404).send({ message: "Flash sale tidak ditemukan." });
+        return reply
+          .status(404)
+          .send({ message: "Flash sale tidak ditemukan." });
       }
 
-      await fastify.prisma.flashSale.delete({
-        where: { id: flashSaleId },
-      });
+      await fastify.prisma.flashSale.delete({ where: { id: flashSaleId } });
+
+      // Invalidasi cache product terkait
+      if (existing.productId) {
+        const product = await fastify.prisma.products.findUnique({
+          where: { id: existing.productId },
+          select: { slug: true },
+        });
+        await invalidateProductCache(
+          fastify,
+          existing.productId,
+          product?.slug,
+        );
+      }
 
       await createActivityLog(fastify, {
         actorUserId: user.id,
@@ -418,9 +479,7 @@ export default async function productRoutes(fastify: FastInstance) {
         },
       });
 
-      return reply.send({
-        message: "Flash sale berhasil dihapus.",
-      });
+      return reply.send({ message: "Flash sale berhasil dihapus." });
     },
   });
 
@@ -460,9 +519,9 @@ export default async function productRoutes(fastify: FastInstance) {
         where: { id: subCategoryId },
       });
       if (!subCategoryExists) {
-        return reply.status(404).send({
-          message: "Invalid subCategoryId provided.",
-        });
+        return reply
+          .status(404)
+          .send({ message: "Invalid subCategoryId provided." });
       }
 
       const newProduct = await fastify.prisma.products.create({
@@ -483,6 +542,9 @@ export default async function productRoutes(fastify: FastInstance) {
           isSpecial: special,
         },
       });
+
+      // Invalidasi list cache
+      await fastify.cache.del("products:list:public");
 
       return reply.status(201).send({
         message: "Product successfully created.",
@@ -557,6 +619,12 @@ export default async function productRoutes(fastify: FastInstance) {
         data: updateData,
       });
 
+      // Invalidasi cache detail + list
+      await invalidateProductCache(fastify, productId, product.slug);
+      if (updateData.slug) {
+        await fastify.cache.del(`products:detail:${updateData.slug}`);
+      }
+
       return reply.send({
         message: "Product updated successfully.",
         ...convertBigIntAndDate(updatedProduct),
@@ -583,13 +651,12 @@ export default async function productRoutes(fastify: FastInstance) {
 
       if (!ensureOwnerOrAdmin(user, product.sellerUserId, reply)) return;
 
-      await fastify.prisma.products.delete({
-        where: { id: productId },
-      });
+      await fastify.prisma.products.delete({ where: { id: productId } });
 
-      return reply.send({
-        message: "Product deleted successfully.",
-      });
+      // Invalidasi cache
+      await invalidateProductCache(fastify, productId, product.slug);
+
+      return reply.send({ message: "Product deleted successfully." });
     },
   });
 
@@ -601,16 +668,6 @@ export default async function productRoutes(fastify: FastInstance) {
     handler: async (req, reply) => {
       const user = req.user;
 
-      /**
-       * BUG-FIX:
-       *  1. Used `===` instead of `==` for strict comparison.
-       *  2. Changed status 401 → 403 (Forbidden) for authorization failures.
-       *     401 means "not authenticated", 403 means "authenticated but not
-       *     allowed".
-       *  3. Fixed typo "allready" → "already".
-       *  4. Stopped sending raw `Error` objects via `reply.send(new Error(...))`
-       *     — Fastify serialises them poorly. Send a plain object instead.
-       */
       if (user?.role !== "admin") {
         return reply.status(403).send({
           message: "You do not have permission to perform this action.",
@@ -641,6 +698,9 @@ export default async function productRoutes(fastify: FastInstance) {
           approvedDate: new Date(),
         },
       });
+
+      // Produk baru published, invalidasi list
+      await invalidateProductCache(fastify, productId, product.slug);
 
       return reply.send({
         message: "Product has been approved.",

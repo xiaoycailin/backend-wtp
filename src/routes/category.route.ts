@@ -1,7 +1,6 @@
 import { authMiddleware } from "../plugins/authMiddleware";
 import { FastInstance, slugify } from "../utils/fastify";
 import { convertBigIntAndDate } from "./products.route";
-// import { cacheMiddleware } from "../utils/cache-utils";
 import type { FastifyRequest, FastifyReply } from "fastify";
 
 export default async function (fastify: FastInstance) {
@@ -30,7 +29,19 @@ export default async function (fastify: FastInstance) {
       const { productInclude } = req.query as any;
       const includePriceFrom = productInclude === "true";
 
+      // Cache key berbeda tergantung query param
+      const cacheKey = `category:list:${includePriceFrom}`;
+
       try {
+        // 1. Cek cache dulu
+        const cached = await fastify.cache.get<any[]>(cacheKey);
+        if (cached) {
+          fastify.log.info(`Cache HIT: ${cacheKey}`);
+          return reply.send(cached);
+        }
+
+        fastify.log.info(`Cache MISS: ${cacheKey}`);
+
         const categories = await fastify.prisma.category.findMany({
           orderBy: {
             position: "asc",
@@ -65,7 +76,6 @@ export default async function (fastify: FastInstance) {
           },
         });
 
-        // map ke priceFrom dan buang products
         const result = categories.map((cat) => ({
           ...cat,
           subCategories: cat.subCategories.map((sub: any) => {
@@ -79,7 +89,12 @@ export default async function (fastify: FastInstance) {
           }),
         }));
 
-        return reply.send(convertBigIntAndDate(result));
+        const finalResult = convertBigIntAndDate(result);
+
+        // 2. Simpan ke cache (TTL 5 menit)
+        await fastify.cache.set(cacheKey, finalResult, 300);
+
+        return reply.send(finalResult);
       } catch (err) {
         fastify.log.error(err);
         return reply.status(500).send({

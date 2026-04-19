@@ -35,9 +35,7 @@ export default async function leaderboardRoute(fastify: FastInstance) {
             title: true,
             thumbnails: true,
             subCategory: {
-              select: {
-                title: true,
-              },
+              select: { title: true },
             },
           },
         },
@@ -48,15 +46,14 @@ export default async function leaderboardRoute(fastify: FastInstance) {
           },
         },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
     const grouped = new Map<string, any>();
 
     for (const trx of transactions) {
-      const buyerName = trx.user?.displayName || trx.email || trx.phoneNumber || "Pelanggan";
+      const buyerName =
+        trx.user?.displayName || trx.email || trx.phoneNumber || "Pelanggan";
       const key = trx.userId || trx.email || trx.phoneNumber || trx.id;
       const totalAmount = Number(trx.totalPrice ?? 0);
       const quantity = Number(trx.quantity ?? 1);
@@ -65,7 +62,8 @@ export default async function leaderboardRoute(fastify: FastInstance) {
         grouped.set(key, {
           key,
           buyerName,
-          productTitle: trx.product?.title || trx.product?.subCategory?.title || "Produk",
+          productTitle:
+            trx.product?.title || trx.product?.subCategory?.title || "Produk",
           totalAmount: 0,
           totalOrders: 0,
           totalQuantity: 0,
@@ -79,31 +77,49 @@ export default async function leaderboardRoute(fastify: FastInstance) {
       item.totalQuantity += quantity;
       if (new Date(trx.createdAt) > new Date(item.lastCreatedAt)) {
         item.lastCreatedAt = trx.createdAt;
-        item.productTitle = trx.product?.title || trx.product?.subCategory?.title || item.productTitle;
+        item.productTitle =
+          trx.product?.title ||
+          trx.product?.subCategory?.title ||
+          item.productTitle;
       }
     }
 
     return Array.from(grouped.values())
       .sort((a, b) => {
-        if (b.totalAmount !== a.totalAmount) return b.totalAmount - a.totalAmount;
-        if (b.totalOrders !== a.totalOrders) return b.totalOrders - a.totalOrders;
-        return new Date(b.lastCreatedAt).getTime() - new Date(a.lastCreatedAt).getTime();
+        if (b.totalAmount !== a.totalAmount)
+          return b.totalAmount - a.totalAmount;
+        if (b.totalOrders !== a.totalOrders)
+          return b.totalOrders - a.totalOrders;
+        return (
+          new Date(b.lastCreatedAt).getTime() -
+          new Date(a.lastCreatedAt).getTime()
+        );
       })
       .slice(0, 10);
   };
 
   fastify.get("/leaderboard", async (_req, reply) => {
+    const cacheKey = "leaderboard:all";
+
+    const cached = await fastify.cache.get<any>(cacheKey);
+    if (cached) return reply.send(cached);
+
     const [today, week, month] = await Promise.all([
       buildBoard(getStartOfDay()),
       buildBoard(getStartOfWeek()),
       buildBoard(getStartOfMonth()),
     ]);
 
-    return reply.send({
+    const result = {
       today,
       week,
       month,
       updatedAt: new Date().toISOString(),
-    });
+    };
+
+    // TTL 5 menit — leaderboard boleh sedikit delay
+    await fastify.cache.set(cacheKey, result, 1200);
+
+    return reply.send(result);
   });
 }
